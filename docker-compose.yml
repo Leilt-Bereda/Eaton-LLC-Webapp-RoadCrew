@@ -32,6 +32,13 @@ services:
       context: ./frontend
     ports:
       - "4200:80"
+  mailhog:
+    image: mailhog/mailhog
+    container_name: safehr-mailhog-dev
+    ports: 
+      
+        - "1025:1025" # SMTP
+        - "8025:8025" # Web UI
 
 volumes:
   postgres-data:

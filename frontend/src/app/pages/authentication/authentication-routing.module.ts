@@ -7,6 +7,7 @@ const routes: Routes = [
     loadComponent: () =>
       import('./login/login.component').then(m => m.LoginComponent)
   },
+  { path: 'forgot-password', loadComponent: () => import('./forgot-password/forgot-password-request.component').then(m => m.ForgotPasswordRequestComponent) },
   { path: '', pathMatch: 'full', redirectTo: 'login' }
 ];
 

@@ -43,4 +43,10 @@ export class AuthService {
   isLoggedIn(): boolean {
     return !!this.access;
   }
+  /** Request a password reset by email OR username (frontend uses a single field). */
+  requestPasswordReset(identifier: string) {
+    // If your backend expects { email }, change the key below to { email: identifier }.
+    return this.http.post<{ ok: boolean }>(`${this.api}password-reset/`, { identifier });
+  }
+
 }

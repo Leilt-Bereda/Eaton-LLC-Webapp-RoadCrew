@@ -45,7 +45,7 @@ export const routes: Routes = [
       { path: 'daily-board', loadComponent: () => import('./pages/daily-board/daily-board.component').then(c => c.DailyBoardComponent) },
       { path: 'dispatch', loadComponent: () => import('./pages/dispatch/dispatch.component').then(c => c.DispatchComponent) },
       { path: 'pay-reports', loadComponent: () => import('./pages/pay-reports/pay-reports.component').then(c => c.PayReportsComponent) },
-      { path: 'end-of-day-report', loadComponent: () => import('./pages/end-of-day-reports/end-of-day-report.component').then(c => c.EndOfDayReportComponent) },
+      { path: 'invoices-report', loadComponent: () => import('./pages/invoices/invoices-report.component').then(c => c.InvoicesReportComponent) },
       { path: 'db-job-viewer/:id', component: DbJobViewerComponent },
       { path: 'job-edit/:id', component: EditJobsComponent },
     ]

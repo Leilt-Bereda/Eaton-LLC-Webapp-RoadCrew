@@ -76,10 +76,10 @@ export const NavigationItems: NavigationItem[] = [
             url: '/pay-reports'
           },
           {
-            id: 'End of Day Reports',
-            title: 'Invoices',
+            id: 'Invoices Report',
+            title: 'Invoices Report',
             type: 'item',
-            url: '/end-of-day-report'
+            url: '/invoices-report'
           }
         ]
       }

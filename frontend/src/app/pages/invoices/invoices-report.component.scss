@@ -1,0 +1,11 @@
+.badge {
+  padding: .35rem .55rem;
+  border-radius: 9999px;
+  font-weight: 500;
+  font-size: .75rem;
+}
+.badge-draft { background: #eef1f6; color: #42526e; }
+.badge-sent { background: #e8f0ff; color: #1a5fff; }
+.badge-paid { background: #e6f6ec; color: #116149; }
+.badge-overdue { background: #ffebea; color: #a12622; }
+.badge-void { background: #f1f1f1; color: #666; }

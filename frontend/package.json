@@ -32,6 +32,8 @@
     "apexcharts": "^5.3.4",
     "bootstrap": "5.3.3",
     "feather-icons": "^4.29.2",
+    "html2canvas": "^1.4.1",
+    "jspdf": "^3.0.3",
     "leaflet": "^1.9.4",
     "ng-apexcharts": "^1.15.0",
     "ngx-leaflet": "^0.0.16",

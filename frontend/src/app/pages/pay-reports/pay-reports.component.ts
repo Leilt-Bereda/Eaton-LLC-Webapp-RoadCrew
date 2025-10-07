@@ -4,7 +4,7 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router, RouterModule } from '@angular/router';
 
-// ✅ import your interfaces from app-level models
+// import your interfaces from app-level models
 import { PayReportHeader } from 'src/app/models/pay-report.model';
 // or: import { PayReportHeader } from '../../models/pay-report.model';
 
@@ -94,8 +94,4 @@ export class PayReportsComponent implements OnInit {
     console.log('navigateToCreateReport');
   }
 
-  generateReport(): void {
-    // Act on `this.selected`
-    console.log('generateReport on', this.selected);
-  }
 }

@@ -1,0 +1,31 @@
+<div class="card">
+    <div class="card-header"><h5 class="mb-0">Create Pay Report</h5></div>
+    <form class="card-body" [formGroup]="form" (ngSubmit)="save()">
+      <div class="row g-3">
+        <div class="col-md-4">
+          <label class="form-label">Week Start</label>
+          <input type="date" class="form-control" formControlName="weekStart" />
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">Week End</label>
+          <input type="date" class="form-control" formControlName="weekEnd" />
+          <div class="text-danger small" *ngIf="form.controls.weekEnd.hasError('range')">
+            End date must be on or after start date.
+          </div>
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">Driver (optional)</label>
+          <input type="text" class="form-control" formControlName="driverName" />
+          <!-- replace with <select> if you have drivers API -->
+        </div>
+      </div>
+  
+      <div class="mt-4 d-flex justify-content-end gap-2">
+        <button type="button" class="btn btn-outline-secondary" (click)="cancel()">Cancel</button>
+        <button type="submit" class="btn btn-primary" [disabled]="form.invalid || saving">
+          {{ saving ? 'Creating…' : 'Create Report' }}
+        </button>
+      </div>
+    </form>
+  </div>
+  

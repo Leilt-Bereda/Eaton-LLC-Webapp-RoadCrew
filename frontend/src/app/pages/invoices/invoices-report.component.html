@@ -1,0 +1,74 @@
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h3>Invoices</h3>
+  <button class="btn btn-primary" (click)="navigateToCreateInvoice()">New Invoice</button>
+</div>
+
+
+<div class="mb-3 row g-2">
+  <div class="col-md-3">
+    <input class="form-control" placeholder="Customer..." [(ngModel)]="filters.customer" (ngModelChange)="applyFilters()">
+  </div>
+  <div class="col-md-3">
+    <input class="form-control" placeholder="Project..." [(ngModel)]="filters.project" (ngModelChange)="applyFilters()">
+  </div>
+  <div class="col-md-2">
+    <select class="form-select" [(ngModel)]="filters.status" (ngModelChange)="applyFilters()">
+      <option value="">Any status</option>
+      <option>Draft</option>
+      <option>Sent</option>
+      <option>Paid</option>
+      <option>Overdue</option>
+      <option>Void</option>
+    </select>
+  </div>
+  <div class="col-md-3">
+  <input class="form-control" type="date" [(ngModel)]="filters.date" (ngModelChange)="applyFilters()">
+</div>
+</div>
+
+<app-card cardTitle="Current Invoices" [options]="false" blockClass="table-border-style">
+  <div class="table-responsive">
+    <table class="table">
+      <thead>
+        <tr>
+          <th></th>
+          <th>INV #</th>
+          <th>Project</th>
+          <th>Customer</th>
+          <th>Invoice Date</th>
+          <th>Status</th>
+          <th class="text-end">Total</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr *ngFor="let inv of invoices; trackBy: trackById">
+          <td><input type="checkbox" [(ngModel)]="inv.selected" (ngModelChange)="onSelect()"/></td>
+          <td>{{ inv.invoiceNo }}</td>
+          <td>{{ inv.projectName }}</td>
+          <td>{{ inv.customerName }}</td>
+          <td>{{ inv.invoiceDate }}</td>
+          <td>
+            <span class="badge" [ngClass]="'badge-' + (inv.status | lowercase)">{{ inv.status }}</span>
+          </td>
+          <td class="text-end"><strong>{{ inv.totalAmount | currency }}</strong></td>
+          <td>
+            <button class="btn btn-sm btn-outline-primary" (click)="open(inv.id)">Open</button>
+            <button class="btn btn-sm btn-outline-secondary" (click)="edit(inv.id)" title="Edit"><i class="bi bi-pencil-square"></i></button>
+            <button class="btn btn-sm btn-outline-danger" (click)="delete(inv.id)" title="Delete"><i class="bi bi-trash"></i></button>
+          </td>
+        </tr>
+        <tr *ngIf="!invoices?.length">
+          <td colspan="8" class="text-center text-muted py-4">No invoices yet.</td>
+        </tr>
+      </tbody>
+    </table>
+    <app-new-invoice-dialog
+  *ngIf="showNewModal"
+  [customers]="customers"
+  [jobs]="jobs"
+  (cancel)="onCloseNew()"
+  (save)="onSaveNew($event)">
+</app-new-invoice-dialog>
+  </div>
+</app-card>

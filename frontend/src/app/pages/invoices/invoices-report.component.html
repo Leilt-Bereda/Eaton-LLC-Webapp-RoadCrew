@@ -54,6 +54,8 @@
           <td class="text-end"><strong>{{ inv.totalAmount | currency }}</strong></td>
           <td>
             <button class="btn btn-sm btn-outline-primary" (click)="open(inv.id)">Open</button>
+            <button class="btn btn-sm btn-outline-secondary" (click)="edit(inv.id)" title="Edit"><i class="bi bi-pencil-square"></i></button>
+            <button class="btn btn-sm btn-outline-danger" (click)="delete(inv.id)" title="Delete"><i class="bi bi-trash"></i></button>
           </td>
         </tr>
         <tr *ngIf="!invoices?.length">
@@ -61,5 +63,12 @@
         </tr>
       </tbody>
     </table>
+    <app-new-invoice-dialog
+  *ngIf="showNewModal"
+  [customers]="customers"
+  [jobs]="jobs"
+  (cancel)="onCloseNew()"
+  (save)="onSaveNew($event)">
+</app-new-invoice-dialog>
   </div>
 </app-card>

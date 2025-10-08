@@ -1,7 +1,7 @@
 import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router } from '@angular/router';
-import { FormGroup, FormControl, FormArray, ReactiveFormsModule, FormsModule } from '@angular/forms';
+import { FormGroup, FormControl, FormArray, ReactiveFormsModule, FormsModule, FormBuilder } from '@angular/forms';
 import { CdkStepperModule } from '@angular/cdk/stepper';
 import { NgStepperModule } from 'angular-ng-stepper';
 import { AddressService } from 'src/app/services/address.service';
@@ -21,6 +21,10 @@ import { JobService } from 'src/app/services/job.service';
 export class CreateJobComponent implements OnInit {
 
   jobForm = new FormGroup({
+
+
+
+  
     // Project Details
     project: new FormControl(''),
     primeContractor: new FormControl(''),
@@ -129,7 +133,11 @@ export class CreateJobComponent implements OnInit {
     jobForemanName: new FormControl(''),
     jobForemanContact: new FormControl(''),
     additionalNotes: new FormControl('')
+
+  
   });
+
+
   
   
 
@@ -193,7 +201,7 @@ export class CreateJobComponent implements OnInit {
         .subscribe(addrs => this.unloadingAddressOptions = addrs);
   }
   
-  
+
 
   addLoadingAddress() {
     const latitude = this.jobForm.get('loadingLatitude')?.value;

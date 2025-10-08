@@ -20,7 +20,12 @@
             <!-- Input for Prime Contractor -->
             <div class="form-group">
               <label>Prime Contractor</label>
-              <input type="text" formControlName="primeContractor" class="form-control">
+              <select formControlName="primeContractor" class="form-control" required>
+                <option value="">-- Select a Prime Contractor --</option>
+                <option value="CompanyA">Company A</option>
+                <option value="CompanyB">Company B</option>
+                <option value="CompanyC">Company C</option>
+              </select>
             </div>
 
             <!-- Input for Prime Contractor Project Number -->
@@ -29,19 +34,25 @@
               <input type="text" formControlName="primeContractorProjectNumber" class="form-control">
             </div>
 
-            <!-- Input for Invoiced Contractor -->
+            <!-- Invoiced Contractor Dropdown -->
             <div class="form-group">
               <label>Invoiced Contractor</label>
-              <select formControlName="contractorInvoice" class="form-control">
+              <select formControlName="contractorInvoice" class="form-control" required>
+                <option value="">-- Select Contractor --</option>
                 <option value="primeContractor">Prime Contractor</option>
-                <option value="other">Other</option>
+                <option value="other">Sub Contractor</option>
               </select>
             </div>
 
-            <!-- Conditional Input for "Other" Invoiced Contractor -->
-            <div class="form-group" *ngIf="isOtherContractor">
+            <!-- Conditional Dropdown for New Invoiced Contractor -->
+            <div class="form-group" *ngIf="jobForm.get('contractorInvoice')?.value === 'other'">
               <label>New Invoiced Contractor</label>
-              <input type="text" formControlName="newContractorInvoice" class="form-control" placeholder="Enter Invoiced Contractor Name">
+              <select formControlName="newContractorInvoice" class="form-control" required>
+                <option value="">-- Select Customer --</option>
+                <option value="CustomerA">Customer A</option>
+                <option value="CustomerB">Customer B</option>
+                <option value="CustomerC">Customer C</option>
+              </select>
             </div>
 
             <!-- Input for Invoiced Contractor Project Number -->
@@ -77,13 +88,21 @@
             <!-- Conditional Input for Prevailing -->
             <div class="form-group" *ngIf="isPrevailing">
               <label>Reporting Requirement</label>
-              <input type="text" formControlName="reportRequirement" class="form-control" placeholder="Enter Reporting Requirement">
+              <select formControlName="reportRequirement" class="form-control" required>
+                <option value="">-- Select Reporting Requirement --</option>
+                <option value="AASHTOWare">AASHTOWare</option>
+                <option value="lpcTrack">LPC Track</option>
+                <option value="salesforce">Salesforce</option>
+              </select>
 
-              <label>Contract Number</label>
-              <input type="text" formControlName="contractNumber" class="form-control" placeholder="Enter Contract Number">
-
-              <label>Project ID Number</label>
-              <input type="text" formControlName="projectId" class="form-control" placeholder="Enter Project ID Number">
+              <!-- Show only if Ashtware is selected -->
+              <div *ngIf="jobForm.get('reportRequirement')?.value === 'ashtware'">
+                <label>Contract Number</label>
+                <input type="text" formControlName="contractNumber" class="form-control" placeholder="Enter Contract Number">
+              
+                <label>Project ID Number</label>
+                <input type="text" formControlName="projectId" class="form-control" placeholder="Enter Project ID Number">
+              </div>
 
               <!-- Prevailing Wage Class Code Table -->
               <div class="mt-3">

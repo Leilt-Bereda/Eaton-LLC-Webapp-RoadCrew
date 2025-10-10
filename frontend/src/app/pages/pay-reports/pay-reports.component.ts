@@ -1,17 +1,12 @@
-// src/app/pages/pay-reports/pay-reports.component.ts
 import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router, RouterModule } from '@angular/router';
 
-// import your interfaces from app-level models
 import { PayReportHeader } from 'src/app/models/pay-report.model';
-// or: import { PayReportHeader } from '../../models/pay-report.model';
 
-// If <app-card> lives in a SharedModule, import it here
 import { SharedModule } from 'src/app/theme/shared/shared.module';
 
-// UI-only extension to track selection in the table
 type PayReportHeaderRow = PayReportHeader & { selected?: boolean };
 
 @Component({

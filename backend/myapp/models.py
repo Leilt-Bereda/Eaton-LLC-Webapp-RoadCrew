@@ -161,6 +161,133 @@ class Address(models.Model):
     def __str__(self):
         return f"{self.street_address}, {self.city}"
 
+# --- Pay Reports ---
+
+from decimal import Decimal
+from django.db import models
+from django.db.models import Sum, F, Q
+
+
+class PayReport(models.Model):
+    """
+    Weekly header for a driver's pay report.
+    Kept minimal, but includes stored rollups + a helper to recompute them.
+    """
+    driver = models.ForeignKey('Driver', on_delete=models.PROTECT, related_name='pay_reports')
+
+    week_start = models.DateField()
+    week_end   = models.DateField()
+
+    # Footer adjustments (shown in your paper report)
+    fuel_program     = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0.00'))
+    fuel_pilot_or_kt = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0.00'))
+    fuel_surcharge   = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0.00'))
+
+    # Stored rollups so list/detail pages are fast (kept in sync via signals below)
+    total_weight_or_hours = models.DecimalField(max_digits=14, decimal_places=2, default=Decimal('0.00'))
+    total_truck_paid      = models.DecimalField(max_digits=14, decimal_places=2, default=Decimal('0.00'))
+    total_amount          = models.DecimalField(max_digits=14, decimal_places=2, default=Decimal('0.00'))
+    total_due             = models.DecimalField(max_digits=14, decimal_places=2, default=Decimal('0.00'))
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-week_start', '-id']
+        constraints = [
+            models.CheckConstraint(
+                check=Q(week_start__lte=F('week_end')),
+                name='pr_week_start_lte_end'
+            ),
+            # Remove this UniqueConstraint if you want multiple reports for the same driver/week
+            models.UniqueConstraint(
+                fields=['driver', 'week_start', 'week_end'],
+                name='uniq_payreport_driver_week'
+            ),
+        ]
+        indexes = [
+            models.Index(fields=['driver', 'week_start', 'week_end']),
+            models.Index(fields=['week_start']),
+            models.Index(fields=['week_end']),
+        ]
+
+    def __str__(self):
+        return f'PayReport #{self.id} — {self.driver.name} [{self.week_start} → {self.week_end}]'
+
+    # ---- Rollup helper ----
+    def recalc_totals(self, save: bool = True):
+        """
+        Recompute denormalized totals from related lines and update total_due.
+        Called automatically by signals on line create/update/delete.
+        """
+        agg = self.lines.aggregate(
+            w=Sum('weight_or_hour'),
+            tp=Sum('truck_paid'),
+            amt=Sum('total'),
+        )
+        self.total_weight_or_hours = agg['w'] or Decimal('0.00')
+        self.total_truck_paid      = agg['tp'] or Decimal('0.00')
+        self.total_amount          = agg['amt'] or Decimal('0.00')
+
+        self.total_due = (
+            self.total_amount
+            + (self.fuel_program or Decimal('0.00'))
+            + (self.fuel_pilot_or_kt or Decimal('0.00'))
+            + (self.fuel_surcharge or Decimal('0.00'))
+        )
+        if save:
+            self.save(update_fields=[
+                'total_weight_or_hours', 'total_truck_paid', 'total_amount', 'total_due', 'updated_at'
+            ])
+
+
+class PayReportLine(models.Model):
+    """
+    One line item in a pay report (snapshot of a trip/day).
+    Job FK stays optional; job_number is always stored as the human-facing value.
+    """
+    report = models.ForeignKey(PayReport, on_delete=models.CASCADE, related_name='lines')
+    date   = models.DateField()
+
+    # Link to Job if available; keep the typed-in number as a snapshot
+    job        = models.ForeignKey('Job', on_delete=models.SET_NULL, null=True, blank=True, related_name='pay_report_lines')
+    job_number = models.CharField(max_length=255)
+
+    # Vehicle
+    truck_number   = models.CharField(max_length=100)
+    trailer_number = models.CharField(max_length=100, blank=True)
+
+    # Locations (snapshots so historical reports don't change if Job/Address edits happen)
+    loaded   = models.CharField(max_length=255, blank=True)
+    unloaded = models.CharField(max_length=255, blank=True)
+
+    # Quantity & money (your UI shows "Weight/Hour" as a single number)
+    weight_or_hour  = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0.00'))
+    truck_paid      = models.DecimalField(max_digits=14, decimal_places=2, default=Decimal('0.00'))
+    total           = models.DecimalField(max_digits=14, decimal_places=2, default=Decimal('0.00'))
+    trailer_rent    = models.DecimalField(max_digits=14, decimal_places=2, default=Decimal('0.00'))
+    broker_charge   = models.DecimalField(max_digits=14, decimal_places=2, default=Decimal('0.00'))
+    contractor_paid = models.DecimalField(max_digits=14, decimal_places=2, default=Decimal('0.00'))
+
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['date', 'id']
+        indexes = [
+            models.Index(fields=['report', 'date']),
+            models.Index(fields=['job_number']),
+        ]
+
+    def __str__(self):
+        return f'PR#{self.report_id} • {self.date} • {self.job_number} • {self.truck_number}'
+
+    def clean(self):
+        """
+        Keep line date within the parent report's week.
+        """
+        if self.report and (self.date < self.report.week_start or self.date > self.report.week_end):
+            from django.core.exceptions import ValidationError
+            raise ValidationError('Line date must be within the report week.')
 
 
 class Comment(models.Model):
@@ -176,3 +303,13 @@ class Comment(models.Model):
 #         ).exclude(id=self.id)
 #         if conflict.exists():
 #             raise ValidationError("Truck is already assigned to another driver.")
+from django.db.models.signals import post_save, post_delete
+from django.dispatch import receiver
+
+@receiver(post_save, sender=PayReportLine)
+def _prl_after_save(sender, instance: PayReportLine, **kwargs):
+    instance.report.recalc_totals(save=True)
+
+@receiver(post_delete, sender=PayReportLine)
+def _prl_after_delete(sender, instance: PayReportLine, **kwargs):
+    instance.report.recalc_totals(save=True)

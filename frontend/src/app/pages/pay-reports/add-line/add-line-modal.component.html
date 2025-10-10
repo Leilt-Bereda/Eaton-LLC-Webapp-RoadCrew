@@ -26,12 +26,44 @@
             <input type="text" class="form-control" formControlName="driverName" />
           </div>
 
-          <div class="mb-3">
-            <label class="form-label">Job #</label>
-            <input type="text" class="form-control" formControlName="jobNumber" />
-            <div class="form-text" *ngIf="jobLoading">Looking up job…</div>
-            <div class="text-danger small" *ngIf="jobError">{{ jobError }}</div>
+    <!-- add-line-modal.component.html -->
+    <div class="mb-3 position-relative">
+      <label class="form-label">Job #</label>
+      <input type="text"
+            class="form-control"
+            formControlName="jobNumber"
+            (focus)="showSuggestions = suggestions.length > 0"
+            (blur)="onJobFieldBlur()"
+            placeholder="Start typing job #, project, or material...">
+
+      <!-- suggestions dropdown -->
+      <div *ngIf="showSuggestions"
+          class="list-group position-absolute w-100 shadow-sm"
+          style="z-index: 1000; max-height: 14rem; overflow-y: auto;">
+        <button type="button"
+                class="list-group-item list-group-item-action d-flex flex-column align-items-start"
+                *ngFor="let j of suggestions; trackBy: trackByJobId"
+                (mousedown)="$event.preventDefault()"
+                (click)="pickSuggestion(j)">
+          <div class="fw-semibold">{{ j.job_number }}</div>
+          <div class="small text-muted text-truncate">{{ j.project }}</div>
+          <div class="small text-muted">
+            <span *ngIf="j.loading_address_info?.location_name">{{ j.loading_address_info.location_name }}</span>
+            <span *ngIf="!j.loading_address_info?.location_name && j.loading_address_info?.street_address">
+              {{ j.loading_address_info.street_address }}, {{ j.loading_address_info.city }}
+            </span>
+            <span class="mx-1">→</span>
+            <span *ngIf="j.unloading_address_info?.location_name">{{ j.unloading_address_info.location_name }}</span>
+            <span *ngIf="!j.unloading_address_info?.location_name && j.unloading_address_info?.street_address">
+              {{ j.unloading_address_info.street_address }}, {{ j.unloading_address_info.city }}
+            </span>
           </div>
+        </button>
+      </div>
+
+      <div class="form-text text-danger" *ngIf="jobError">{{ jobError }}</div>
+    </div>
+
 
           <div class="mb-3">
             <label class="form-label">Truck #</label>

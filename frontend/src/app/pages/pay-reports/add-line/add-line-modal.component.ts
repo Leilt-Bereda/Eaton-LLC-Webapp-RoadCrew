@@ -1,11 +1,9 @@
-// src/app/pages/open-pay-report/add-line-modal.component.ts
 import { Component, EventEmitter, Input, OnDestroy, OnInit, Output } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { debounceTime, distinctUntilChanged, filter, Subscription, switchMap, tap, catchError, of } from 'rxjs';
 import { PayReportLine } from 'src/app/models/pay-report.model';
-import { JobsService, PayReportsService } from '../../../services/pay-reports.service';
-
+import { JobsService, PayReportsService, JobLite } from '../../../services/pay-reports.service';
 
 @Component({
   selector: 'app-add-line-modal',
@@ -27,11 +25,13 @@ export class AddLineModalComponent implements OnInit, OnDestroy {
   jobError = '';
   saving = false;
 
+  suggestions: JobLite[] = [];
+  showSuggestions = false;
+
   private subs = new Subscription();
 
   form = this.fb.group({
     date: ['', Validators.required],
-    driverName: ['', Validators.required],
     jobNumber: ['', Validators.required],
     truckNumber: ['', Validators.required],
     trailerNumber: [''],
@@ -53,47 +53,51 @@ export class AddLineModalComponent implements OnInit, OnDestroy {
   ) {}
 
   ngOnInit(): void {
-    // prefill date to weekStart (optional)
+    // Prefill date to weekStart (optional)
     this.form.patchValue({ date: this.weekStart });
 
-    // Debounce job number input and fetch job details
-    const sub = this.form.controls.jobNumber.valueChanges.pipe(
+    // --- Live job search for suggestions (typeahead) ---
+    const suggestSub = this.form.controls.jobNumber.valueChanges.pipe(
+      debounceTime(250),
+      distinctUntilChanged(),
+      tap(() => { this.showSuggestions = false; this.jobError = ''; }),
+      filter(v => !!v && String(v).trim().length >= 2),
+      switchMap((q: string) =>
+        this.jobs.search(q.trim()).pipe(
+          catchError(() => of([] as JobLite[]))
+        )
+      )
+    ).subscribe(list => {
+      this.suggestions = list;
+      this.showSuggestions = list.length > 0;
+    });
+
+    // --- Auto-fill from exact job number (convenience) ---
+    const autoFillSub = this.form.controls.jobNumber.valueChanges.pipe(
       debounceTime(300),
       distinctUntilChanged(),
       filter(v => !!v && String(v).trim().length >= 2),
       tap(() => { this.jobLoading = true; this.jobError = ''; }),
       switchMap(jobNo =>
         this.jobs.getByJobNumber(String(jobNo).trim()).pipe(
-          catchError(err => {
-            this.jobError = 'Job not found.';
-            return of(null);
-          }),
+          catchError(() => of(null)),
           tap(() => this.jobLoading = false)
         )
       )
     ).subscribe(job => {
-      if (!job) return;
-
-      // Auto-fill form fields from job
-      this.form.patchValue({
-        loaded: job.loadingAddress ?? '',
-        unloaded: job.unloadingAddress ?? '',
-        truckPaid: job.defaultTruckPaid ?? 0,
-        // You can auto-set 'weightOrHour' default or leave as 0
-      });
-
-      // Optional: preview Total as weightOrHour * truckPaid when either changes
+      if (job) this.applyJobAutoFill(job);
     });
 
-    // Recompute totals on relevant changes (simple preview; backend is source of truth)
+    // --- Preview totals on client (server remains source of truth) ---
     const recompute = this.form.valueChanges.subscribe(v => {
-      const weight = Number(v.weightOrHour) || 0;
-      const truckPaid = Number(v.truckPaid) || 0;
-      const total = Number(v.total) || (weight * truckPaid);
+      const weight = Number(v?.weightOrHour) || 0;
+      const rate = Number(v?.truckPaid) || 0;
+      const total = Number(v?.total) || (weight * rate);
       this.form.patchValue({ total }, { emitEvent: false });
     });
 
-    this.subs.add(sub);
+    this.subs.add(suggestSub);
+    this.subs.add(autoFillSub);
     this.subs.add(recompute);
   }
 
@@ -101,15 +105,69 @@ export class AddLineModalComponent implements OnInit, OnDestroy {
     this.subs.unsubscribe();
   }
 
+  // ---- UI helpers ----
+  trackByJobId = (_: number, j: JobLite) => j.id;
+
+  onJobFieldBlur() {
+    // small delay so click on suggestion can register before closing
+    setTimeout(() => this.showSuggestions = false, 150);
+  }
+
+  pickSuggestion(job: JobLite) {
+    // Set the job number (triggers auto-fill stream) and apply snapshots immediately
+    this.form.patchValue({ jobNumber: job.job_number }, { emitEvent: true });
+    this.applyJobAutoFill(job);
+    this.showSuggestions = false;
+  }
+
+  private applyJobAutoFill(job: JobLite) {
+    // Prefer location_name, then street address
+    const loaded = job.loading_address_info
+      ? (job.loading_address_info.location_name || job.loading_address_info.street_address || '')
+      : '';
+    const unloaded = job.unloading_address_info
+      ? (job.unloading_address_info.location_name || job.unloading_address_info.street_address || '')
+      : '';
+
+    this.form.patchValue(
+      {
+        loaded,
+        unloaded,
+        // If your API exposes a default rate on the job, you can set it here:
+        // truckPaid: (job as any).defaultTruckPaid ?? 0,
+      },
+      { emitEvent: false }
+    );
+  }
+
+  // ---- Modal controls ----
   close(): void {
     this.closed.emit();
   }
 
+  // ---- Save line ----
   save(): void {
-    if (this.form.invalid || !this.reportId) return;
+    if (this.form.invalid || !this.reportId) {
+      this.form.markAllAsTouched();
+      return;
+    }
     this.saving = true;
 
-    const payload = { ...this.form.value } as any;
+    // Backend expects PayReportLine fields (driverName is NOT sent)
+    const payload = {
+      date: this.form.value.date,
+      jobNumber: this.form.value.jobNumber,
+      truckNumber: this.form.value.truckNumber,
+      trailerNumber: this.form.value.trailerNumber,
+      loaded: this.form.value.loaded,
+      unloaded: this.form.value.unloaded,
+      weightOrHour: Number(this.form.value.weightOrHour) || 0,
+      truckPaid: Number(this.form.value.truckPaid) || 0,
+      total: Number(this.form.value.total) || 0,
+      trailerRent: Number(this.form.value.trailerRent) || 0,
+      brokerCharge: Number(this.form.value.brokerCharge) || 0,
+      contractorPaid: Number(this.form.value.contractorPaid) || 0
+    } as any;
 
     this.reports.createLine(this.reportId, payload).subscribe({
       next: (created) => {

@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Job, Customer, Driver, Role, User, UserRole, Comment, Truck, DriverTruckAssignment, Operator, Address, JobDriverAssignment
+from .models import Job, Customer, Driver, Role, User, UserRole, Comment, Truck, DriverTruckAssignment, Operator, Address, JobDriverAssignment,Invoice,InvoiceLine
 from django.contrib.auth import get_user_model
 
 class AddressSerializer(serializers.ModelSerializer):
@@ -167,5 +167,68 @@ class OperatorSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
 
+class InvoiceLineSerializer(serializers.ModelSerializer):
+    # If your model does NOT store `amount`, compute it from qty * unit_price:
+    amount = serializers.SerializerMethodField(read_only=True)
 
+    class Meta:
+        model = InvoiceLine
+        fields = ["id", "invoice", "description", "quantity", "unit_price", "amount"]
+        read_only_fields = ["id"]
+
+    def get_amount(self, obj):
+        # If your model already has `amount` field, replace with: return obj.amount
+        qty = obj.quantity or 0
+        price = obj.unit_price or 0
+        return float(qty) * float(price)
+
+
+class InvoiceSerializer(serializers.ModelSerializer):
+    customer_id = serializers.IntegerField()
+    job_id = serializers.IntegerField( allow_null=True, required=False)
+    lines = InvoiceLineSerializer(many=True, required=False)
+
+    class Meta:
+        model = Invoice
+        fields = [
+            "id",
+            "invoice_no",
+            "invoice_date",
+            "status",
+            "total_amount",     # keep read-only if you compute it server-side
+            "customer_id",
+            "job_id",
+            "lines",
+        ]
+        read_only_fields = ["id", "total_amount"]
+
+    def create(self, validated_data):
+        # pop nested lines (coming from `source="lines"`)
+        lines_data = validated_data.pop("lines", [])
+        invoice = Invoice.objects.create(**validated_data)
+
+        for line in lines_data:
+            InvoiceLine.objects.create(invoice=invoice, **line)
+
+        # Optional: compute total here if not handled by model .save()
+        try:
+            total = 0
+            for l in invoice.lines.all():
+                qty = l.quantity or 0
+                price = l.unit_price or 0
+                total += float(qty) * float(price)
+            invoice.total_amount = total
+            invoice.save(update_fields=["total_amount"])
+        except Exception:
+            pass
+
+        return invoice
+
+    def update(self, instance, validated_data):
+        # Header-only updates (keep line editing for later)
+        validated_data.pop("lines", None)
+        for attr, val in validated_data.items():
+            setattr(instance, attr, val)
+        instance.save()
+        return instance
 

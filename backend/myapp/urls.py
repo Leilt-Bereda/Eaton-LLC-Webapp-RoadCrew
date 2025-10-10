@@ -6,7 +6,7 @@ from . import views
 from .views import (
     JobViewSet, CustomerViewSet, DriverViewSet, RoleViewSet,
     UserViewSet, UserRoleViewSet, CommentViewSet, TruckViewSet,
-    DriverTruckAssignmentViewSet, RegisterView, CustomTokenObtainPairView, OperatorViewSet, AddressViewSet, JobDriverAssignmentViewSet,
+    DriverTruckAssignmentViewSet, RegisterView, CustomTokenObtainPairView, OperatorViewSet, AddressViewSet, JobDriverAssignmentViewSet, InvoiceViewSet, InvoiceLineViewSet,
     CustomTokenRefreshView, protected_view, assign_truck_to_driver, unassigned_trucks
 )
 
@@ -23,6 +23,8 @@ router.register(r'addresses', AddressViewSet)
 router.register(r'driver-truck-assignments', DriverTruckAssignmentViewSet)
 router.register(r'operators', OperatorViewSet, basename='operator')
 router.register(r'job-driver-assignments', JobDriverAssignmentViewSet)
+router.register(r'invoices', InvoiceViewSet, basename='invoice')
+router.register(r'invoice-lines', InvoiceLineViewSet, basename='invoice-line')
 
 
 urlpatterns = [

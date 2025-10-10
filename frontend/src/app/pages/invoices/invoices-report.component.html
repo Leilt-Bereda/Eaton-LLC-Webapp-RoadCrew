@@ -1,6 +1,13 @@
 <div class="d-flex justify-content-between align-items-center mb-3">
   <h3>Invoices</h3>
-  <button class="btn btn-primary" (click)="navigateToCreateInvoice()">New Invoice</button>
+  <div class="d-flex gap-2">
+    <button class="btn btn-outline-danger" 
+            [disabled]="selected.length === 0" 
+            (click)="deleteSelected()">
+      <i class="material-icons" style="font-size: 16px;">&#xE872;</i> Delete Selected
+    </button>
+    <button class="btn btn-primary" (click)="navigateToCreateInvoice()">New Invoice</button>
+  </div>
 </div>
 
 
@@ -38,7 +45,7 @@
           <th>Invoice Date</th>
           <th>Status</th>
           <th class="text-end">Total</th>
-          <th></th>
+          <th>Actions</th>
         </tr>
       </thead>
       <tbody>
@@ -49,13 +56,31 @@
           <td>{{ inv.customerName }}</td>
           <td>{{ inv.invoiceDate }}</td>
           <td>
-            <span class="badge" [ngClass]="'badge-' + (inv.status | lowercase)">{{ inv.status }}</span>
+            <select class="form-select form-select-sm status-select" 
+                    [(ngModel)]="inv.status" 
+                    (change)="updateStatus(inv.id, inv.status)"
+                    [ngClass]="'status-' + (inv.status | lowercase)"
+                    style="border: 1px solid #333 !important; background: white !important; padding: 4px 25px 4px 8px !important; font-size: 0.875rem !important; min-width: 100px !important; appearance: none !important; background-image: url('data:image/svg+xml;charset=US-ASCII,<svg xmlns=\'http://www.w3.org/2000/svg\' viewBox=\'0 0 4 5\'><path fill=\'%23333\' d=\'M2 0L0 2h4zm0 5L0 3h4z\'/></svg>') !important; background-repeat: no-repeat !important; background-position: right 8px center !important; background-size: 12px !important;">
+              <option value="Draft">Draft</option>
+              <option value="Sent">Sent</option>
+              <option value="Paid">Paid</option>
+              <option value="Overdue">Overdue</option>
+              <option value="Void">Void</option>
+            </select>
           </td>
           <td class="text-end"><strong>{{ inv.totalAmount | currency }}</strong></td>
           <td>
-            <button class="btn btn-sm btn-outline-primary" (click)="open(inv.id)">Open</button>
-            <button class="btn btn-sm btn-outline-secondary" (click)="edit(inv.id)" title="Edit"><i class="bi bi-pencil-square"></i></button>
-            <button class="btn btn-sm btn-outline-danger" (click)="delete(inv.id)" title="Delete"><i class="bi bi-trash"></i></button>
+            <div class="action-buttons-row">
+              <a href="#" class="view" title="View" (click)="open(inv.id); $event.preventDefault()" data-toggle="tooltip">
+                <i class="material-icons">&#xE417;</i>
+              </a>
+              <a href="#" class="edit" title="Edit" (click)="edit(inv.id); $event.preventDefault()" data-toggle="tooltip">
+                <i class="material-icons">&#xE254;</i>
+              </a>
+              <a href="#" class="delete" title="Delete" (click)="delete(inv.id); $event.preventDefault()" data-toggle="tooltip">
+                <i class="material-icons">&#xE872;</i>
+              </a>
+            </div>
           </td>
         </tr>
         <tr *ngIf="!invoices?.length">

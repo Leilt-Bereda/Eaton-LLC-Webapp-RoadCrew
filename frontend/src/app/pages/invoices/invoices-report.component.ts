@@ -128,17 +128,12 @@ export class InvoicesReportComponent implements OnInit {
 
 
   open(id: number): void {
-    // this.router.navigate(['/invoices', id]);
-    console.log('open invoice', id);
+    this.router.navigate(['/invoice-detail', id]);
   }
 
   edit(id: number): void {
-  // Option A: navigate to an edit page (recommended)
-  // this.router.navigate(['/invoices', id, 'edit']);
-
-  // Option B: for now just open your existing “open” page and edit there
-  console.log('edit invoice', id);
-}
+    this.router.navigate(['/invoice-detail', id]);
+  }
 
   delete(id: number): void {
     if (!confirm('Are you sure you want to delete this invoice?')) return;
@@ -151,5 +146,32 @@ export class InvoicesReportComponent implements OnInit {
   generateSelected(): void {
     // e.g., bulk generate PDFs / send
     console.log('generate on', this.selected.map(s => s.id));
+  }
+
+  printSelected(): void {
+    if (this.selected.length === 0) return;
+    console.log('Printing selected invoices:', this.selected.map(s => s.id));
+    // TODO: Implement print functionality
+  }
+
+  deleteSelected(): void {
+    if (this.selected.length === 0) return;
+    const message = `Are you sure you want to delete ${this.selected.length} selected invoice(s)?`;
+    if (!confirm(message)) return;
+    
+    const selectedIds = this.selected.map(s => s.id);
+    this.all = this.all.filter(i => !selectedIds.includes(i.id));
+    this.selected = [];
+    this.applyFilters();
+    console.log('Deleted selected invoices:', selectedIds);
+  }
+
+  updateStatus(invoiceId: number, newStatus: string): void {
+    const invoice = this.all.find(inv => inv.id === invoiceId);
+    if (invoice) {
+      invoice.status = newStatus as any;
+      // TODO: Update in backend
+      console.log(`Updated invoice ${invoiceId} status to ${newStatus}`);
+    }
   }
 }

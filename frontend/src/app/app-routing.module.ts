@@ -46,6 +46,7 @@ export const routes: Routes = [
       { path: 'dispatch', loadComponent: () => import('./pages/dispatch/dispatch.component').then(c => c.DispatchComponent) },
       { path: 'pay-reports', loadComponent: () => import('./pages/pay-reports/pay-reports.component').then(c => c.PayReportsComponent) },
       { path: 'invoices-report', loadComponent: () => import('./pages/invoices/invoices-report.component').then(c => c.InvoicesReportComponent) },
+      { path: 'invoice-detail/:id', loadComponent: () => import('./pages/invoices/invoice-detail/invoice-detail.component').then(c => c.InvoiceDetailComponent) },
       { path: 'db-job-viewer/:id', component: DbJobViewerComponent },
       { path: 'job-edit/:id', component: EditJobsComponent },
     ]

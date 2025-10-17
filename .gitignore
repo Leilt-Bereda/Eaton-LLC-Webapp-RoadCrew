@@ -84,8 +84,4 @@ node_modules/
 # Environment variables file
 .env
 .env.local
-<<<<<<< Updated upstream
 .env.*.local
-=======
-.env.*.local
->>>>>>> Stashed changes

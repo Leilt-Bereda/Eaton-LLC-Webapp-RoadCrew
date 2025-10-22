@@ -1,19 +1,23 @@
 <div class="d-flex justify-content-between align-items-center mb-3">
     <h3>Pay Reports</h3>
     <div class="d-flex gap-2">
-      <button class="btn btn-outline-secondary" (click)="navigateToCreateReport()">Add Report</button>
-      <button class="btn btn-primary" (click)="generateReport()" [disabled]="!selected?.length">Generate Report</button>
+      <button class="btn btn-outline-secondary" [routerLink]="['/pay-reports/new']">
+        Add Report
+      </button>
     </div>
   </div>
   
   <div class="mb-3 row g-2">
     <div class="col-md-3">
-      <input class="form-control" placeholder="Driver..." [(ngModel)]="filters.driver" (ngModelChange)="applyFilters()">
+      <h6>Driver</h6>
+      <input class="form-control" placeholder="Driver" [(ngModel)]="filters.driver" (ngModelChange)="applyFilters()">
     </div>
     <div class="col-md-3">
+      <h6>Start Date</h6>
       <input class="form-control" type="date" [(ngModel)]="filters.from" (ngModelChange)="applyFilters()">
     </div>
     <div class="col-md-3">
+      <h6>End Date</h6>
       <input class="form-control" type="date" [(ngModel)]="filters.to" (ngModelChange)="applyFilters()">
     </div>
   </div>

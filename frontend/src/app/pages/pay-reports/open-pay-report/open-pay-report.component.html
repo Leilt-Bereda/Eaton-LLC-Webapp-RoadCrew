@@ -1,0 +1,93 @@
+<div class="d-flex justify-content-between align-items-start mb-2">
+    <div>
+      <h5 class="mb-1">Driver: {{ report.driverName }}</h5>
+      <div class="text-muted">Week of: {{ report.weekStart }} to {{ report.weekEnd }}</div>
+    </div>
+    <div class="d-flex gap-2">
+      <button class="btn btn-outline-secondary" (click)="exportCsv()">Export CSV</button>
+      <button class="btn btn-primary" (click)="exportPdf()">Export PDF</button>
+    </div>
+    <div class="d-flex justify-content-end mb-3">
+        <button class="btn btn-outline-secondary" (click)="openAddModal()">Add Line</button>
+      </div>
+  </div>
+  <div #reportArea>
+    <div class="table-responsive">
+        <table class="table table-sm align-middle">
+        <thead>
+            <tr>
+            <th>Date</th>
+            <th>Truck #</th>
+            <th>Trailer #</th>
+            <th>Job #</th>
+            <th>Loaded</th>
+            <th>Unloaded</th>
+            <th>Weight/Hour</th>
+            <th>Truck Paid</th>
+            <th>Total</th>
+            <th>Trailer Rent</th>
+            <th>Broker Charge</th>
+            <th>Contractor Paid</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr *ngFor="let line of report.lines; trackBy: trackByLineId">
+            <td>{{ line.date }}</td>
+            <td>{{ line.truckNumber }}</td>
+            <td>{{ line.trailerNumber }}</td>
+            <td>{{ line.jobNumber }}</td>
+            <td>{{ line.loaded }}</td>
+            <td>{{ line.unloaded }}</td>
+            <td>{{ line.weightOrHour | number:'1.0-2' }}</td>
+            <td>{{ line.truckPaid | currency }}</td>
+            <td>{{ line.total | currency }}</td>
+            <td>{{ line.trailerRent || 0 | currency }}</td>
+            <td>{{ line.brokerCharge || 0 | currency }}</td>
+            <td>{{ line.contractorPaid || 0 | currency }}</td>
+            </tr>
+        </tbody>
+        <tfoot>
+            <tr>
+            <td colspan="6" class="text-end fw-bold">Weight/Hour Total</td>
+            <td class="fw-bold">{{ sum('weightOrHour') | number:'1.0-2' }}</td>
+            <td class="fw-bold">{{ sum('truckPaid') | currency }}</td>
+            <td class="fw-bold">{{ sum('total') | currency }}</td>
+            <td class="fw-bold">{{ sum('trailerRent') | currency }}</td>
+            <td class="fw-bold">{{ sum('brokerCharge') | currency }}</td>
+            <td class="fw-bold">{{ sum('contractorPaid') | currency }}</td>
+            </tr>
+            <tr>
+            <td colspan="11" class="text-end">Fuel Program</td>
+            <td>{{ report.fuelProgram || 0 | currency }}</td>
+            </tr>
+            <tr>
+            <td colspan="11" class="text-end">Fuel - Pilot/KT</td>
+            <td>{{ report.fuelPilotOrKT || 0 | currency }}</td>
+            </tr>
+            <tr>
+            <td colspan="11" class="text-end">Fuel Surcharge</td>
+            <td>{{ report.fuelSurcharge || 0 | currency }}</td>
+            </tr>
+            <tr>
+            <td colspan="11" class="text-end fw-bold">Total Due</td>
+            <td class="fw-bold">{{ totalDue | currency }}</td>
+            </tr>
+        </tfoot>
+        </table>
+    </div>
+</div>
+  <app-add-line-modal
+    [open]="addOpen"
+    [reportId]="report?.id"
+    [weekStart]="report?.weekStart"
+    [weekEnd]="report?.weekEnd"
+    (closed)="onModalClosed()"
+    (created)="onLineCreated($event)">
+  </app-add-line-modal>
+  
+  
+  <small class="text-muted d-block mt-3">
+    Paid From: M Eaton Trucking LLC • 15790 320th Ave • Waseca, MN 56093
+  </small>
+    
+  

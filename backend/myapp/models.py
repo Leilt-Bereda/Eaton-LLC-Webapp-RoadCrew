@@ -7,9 +7,9 @@ from decimal import Decimal
 from django.utils import timezone
 from django.db.models.signals import post_save, post_delete
 from django.dispatch import receiver
-
+'''
 user = models.ForeignKey(User, on_delete=models.CASCADE)
-
+'''
 class Role(models.Model):
     role_name = models.TextField()
 
@@ -35,9 +35,9 @@ class Customer(models.Model):
 
     def __str__(self):
         return self.company_name
-    def __str__(self):
+    '''def __str__(self):
         return self.name
-
+'''
 
 class Operator(models.Model):
     OPERATOR_TYPE_CHOICES = [
@@ -234,3 +234,115 @@ class InvoiceLine(models.Model):
 @receiver(post_delete, sender=InvoiceLine)
 def _invoice_totals_sync(sender, instance, **kwargs):
     instance.invoice.recalc_totals()
+
+
+
+class PayReport(models.Model):
+    id = models.BigAutoField(primary_key=True)
+    driver = models.ForeignKey('Driver', db_column='driver_id', on_delete=models.PROTECT, related_name='pay_reports', null=True, blank=True, )
+
+    week_start = models.DateField(db_column='week_start')
+    week_end   = models.DateField(db_column='week_end')
+
+    total_weight_or_hours = models.DecimalField(db_column='total_weight_or_hours', max_digits=14, decimal_places=2)
+    total_truck_paid      = models.DecimalField(db_column='total_truck_paid', max_digits=14, decimal_places=2)
+    total_amount          = models.DecimalField(db_column='total_amount', max_digits=14, decimal_places=2)
+    total_due             = models.DecimalField(db_column='total_due', max_digits=14, decimal_places=2)
+
+    created_at = models.DateTimeField(db_column='created_at')
+    updated_at = models.DateTimeField(db_column='updated_at')
+
+    class Meta:
+        db_table = 'myapp_payreport'
+        managed = True
+        unique_together = (('driver', 'week_start', 'week_end'),)
+        constraints = [
+            models.CheckConstraint(check=models.Q(week_end__gte=models.F('week_start')), name='pr_week_start_lte_end')
+        ]
+
+    def __str__(self):
+        return f"PR-{self.id} {self.driver.name} [{self.week_start} → {self.week_end}]"
+
+    def recalc_from_lines(self):
+        agg = self.lines.aggregate(
+            sum_hours=models.Sum('weight_or_hour'),
+            max_rate=models.Max('truck_paid'),
+            sum_total=models.Sum('total'),
+        )
+        sum_hours = agg['sum_hours'] or Decimal('0.00')
+        max_rate  = agg['max_rate']  or Decimal('0.00')
+        sum_total = agg['sum_total'] or Decimal('0.00')
+
+        self.total_weight_or_hours = sum_hours
+        self.total_truck_paid      = max_rate
+        self.total_amount          = sum_total
+
+        
+
+        self.updated_at = timezone.now()
+        super().save(update_fields=[
+            'total_weight_or_hours', 'total_truck_paid', 'total_amount', 'total_due', 'updated_at'
+        ])
+
+
+class PayReportLine(models.Model):
+    id = models.BigAutoField(primary_key=True)
+
+    date           = models.DateField(db_column='date')
+    job_number     = models.CharField(db_column='job_number', max_length=255)
+    truck_number   = models.CharField(db_column='truck_number', max_length=100)
+    trailer_number = models.CharField(db_column='trailer_number', max_length=100)
+    loaded         = models.CharField(db_column='loaded', max_length=255)
+    unloaded       = models.CharField(db_column='unloaded', max_length=255)
+
+    weight_or_hour = models.DecimalField(db_column='weight_or_hour', max_digits=12, decimal_places=2)  # hours
+    truck_paid     = models.DecimalField(db_column='truck_paid', max_digits=14, decimal_places=2)      # hourly rate
+
+    total           = models.DecimalField(db_column='total', max_digits=14, decimal_places=2)
+    trailer_rent    = models.DecimalField(db_column='trailer_rent', max_digits=14, decimal_places=2)
+    broker_charge   = models.DecimalField(db_column='broker_charge', max_digits=14, decimal_places=2)
+    contractor_paid = models.DecimalField(db_column='contractor_paid', max_digits=14, decimal_places=2)
+    fuel_program     = models.DecimalField(db_column='fuel_program', max_digits=12, decimal_places=2)
+    fuel_pilot_or_kt = models.DecimalField(db_column='fuel_pilot_or_kt', max_digits=12, decimal_places=2)
+    fuel_surcharge   = models.DecimalField(db_column='fuel_surcharge', max_digits=12, decimal_places=2)
+
+
+    created_at = models.DateTimeField(db_column='created_at')
+
+    job    = models.ForeignKey('Job', on_delete=models.SET_NULL, null=True, blank=True, related_name='pay_lines')
+    report = models.ForeignKey('PayReport', on_delete=models.CASCADE, related_name='lines', null=True, blank=True)
+
+    class Meta:
+        db_table = 'myapp_payreportline'
+        managed = True
+        indexes = [
+            models.Index(fields=['report', 'date']),
+            models.Index(fields=['job_number']),
+        ]
+
+    def __str__(self):
+        return f"{self.date} | {self.job_number} | ${self.contractor_paid}"
+
+    def compute_amounts(self):
+        # total = hours × rate; contractor_paid = total (trailer/broker kept at 0.00)
+
+        line_total = (self.weight_or_hour or Decimal('0.00')) * (self.truck_paid or Decimal('0.00'))
+        self.total = Decimal(line_total).quantize(Decimal('0.01'))
+        self.trailer_rent  = self.trailer_rent  or Decimal('0.00')
+        self.broker_charge = self.broker_charge or Decimal('0.00')
+        self.contractor_paid = self.total
+        fpk = self.fuel_pilot_or_kt or Decimal('0.00')
+        fs  = self.fuel_surcharge   or Decimal('0.00')
+        self.total_due = (self.total_amount - fpk + fs).quantize(Decimal('0.01'))
+
+    def save(self, *args, **kwargs):
+        if self.created_at is None:
+            self.created_at = timezone.now()
+        self.compute_amounts()
+        super().save(*args, **kwargs)
+
+
+@receiver(post_save, sender=PayReportLine)
+@receiver(post_delete, sender=PayReportLine)
+def _sync_payreport_totals(sender, instance, **kwargs):
+    instance.report.recalc_from_lines()

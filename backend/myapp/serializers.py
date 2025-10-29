@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Job, Customer, Driver, Role, User, UserRole, Comment, Truck, DriverTruckAssignment, Operator, Address, JobDriverAssignment,Invoice,InvoiceLine
+from .models import Job, Customer, Driver, Role, User, UserRole, Comment, Truck, DriverTruckAssignment, Operator, Address, JobDriverAssignment,Invoice,InvoiceLine,PayReport, PayReportLine
 from django.contrib.auth import get_user_model
 
 class AddressSerializer(serializers.ModelSerializer):
@@ -232,3 +232,36 @@ class InvoiceSerializer(serializers.ModelSerializer):
         instance.save()
         return instance
 
+class PayReportLineSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = PayReportLine
+        fields = [
+            'id', 'report', 'job', 'date',
+            'job_number', 'truck_number', 'trailer_number',
+            'loaded', 'unloaded',
+            'weight_or_hour', 'truck_paid',
+            'total', 'contractor_paid',
+            'trailer_rent', 'broker_charge',
+            'created_at',
+        ]
+        read_only_fields = ['id', 'total', 'contractor_paid', 'created_at']
+
+class PayReportSerializer(serializers.ModelSerializer):
+    driver_name = serializers.CharField(source='driver.name', read_only=True)
+    lines = PayReportLineSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = PayReport
+        fields = [
+            'id', 'driver', 'driver_name',
+            'week_start', 'week_end',
+            'fuel_program', 'fuel_pilot_or_kt', 'fuel_surcharge',
+            'total_weight_or_hours', 'total_truck_paid', 'total_amount', 'total_due',
+            'created_at', 'updated_at',
+            'lines',
+        ]
+        read_only_fields = [
+            'id',
+            'total_weight_or_hours', 'total_truck_paid', 'total_amount', 'total_due',
+            'created_at', 'updated_at',
+        ]

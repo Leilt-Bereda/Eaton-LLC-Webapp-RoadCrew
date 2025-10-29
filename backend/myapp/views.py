@@ -5,15 +5,21 @@ from rest_framework.response import Response
 from rest_framework.permissions import AllowAny
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 from django.db.models import Q, Prefetch
+from rest_framework.decorators import action
+from django.utils.dateparse import parse_date
+from datetime import timedelta
+from decimal import Decimal
+
+
 
 from django.contrib.auth import get_user_model
 from .models import (
-    Job, Customer, Driver, Role, UserRole, Comment, Truck, DriverTruckAssignment, Operator, Address, JobDriverAssignment,Invoice, InvoiceLine
+    Job, Customer, Driver, Role, UserRole, Comment, Truck, DriverTruckAssignment, Operator, Address, JobDriverAssignment,Invoice, InvoiceLine,PayReport, PayReportLine
 )
 from .serializers import (
     JobSerializer, CustomerSerializer, DriverSerializer, RoleSerializer,
     UserSerializer, UserRoleSerializer, CommentSerializer, TruckSerializer,
-    DriverTruckAssignmentSerializer, OperatorSerializer, AddressSerializer, JobDriverAssignmentSerializer,InvoiceSerializer, InvoiceLineSerializer
+    DriverTruckAssignmentSerializer, OperatorSerializer, AddressSerializer, JobDriverAssignmentSerializer,InvoiceSerializer, InvoiceLineSerializer, PayReportSerializer, PayReportLineSerializer
 )
 
 # For user model
@@ -177,7 +183,7 @@ class InvoiceViewSet(viewsets.ModelViewSet):
         date     = self.request.query_params.get("date")
 
         if customer:
-            qs = qs.filter(customer__name__icontains=customer)
+            qs = qs.filter(customer__company_name__icontains=customer)
         if project:
             # adjust if your job/project field is named differently
             qs = qs.filter(job__project__icontains=project)
@@ -194,3 +200,126 @@ class InvoiceLineViewSet(viewsets.ModelViewSet):
     """
     queryset = InvoiceLine.objects.select_related("invoice").all()
     serializer_class = InvoiceLineSerializer
+class PayReportViewSet(viewsets.ModelViewSet):
+    """
+    Uses Supabase tables:
+      - myapp_payreport (header)
+      - myapp_payreportline (details)
+    """
+    queryset = PayReport.objects.select_related('driver').prefetch_related('lines')
+    serializer_class = PayReportSerializer
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        driver_id = self.request.query_params.get('driver_id')
+        start     = self.request.query_params.get('start')
+        end       = self.request.query_params.get('end')
+        if driver_id:
+            qs = qs.filter(driver_id=driver_id)
+        if start:
+            qs = qs.filter(week_end__gte=start)
+        if end:
+            qs = qs.filter(week_start__lte=end)
+        return qs
+
+    def perform_create(self, serializer):
+        pr = serializer.save(created_at=timezone.now(), updated_at=timezone.now())
+        pr.recalc_from_lines()
+
+    def perform_update(self, serializer):
+        pr = serializer.save(updated_at=timezone.now())
+        pr.recalc_from_lines()
+
+    @action(detail=False, methods=['post'], url_path='generate')
+    def generate(self, request):
+        """
+        Body:
+        {
+          "driver_id": 3,
+          "week_start": "2025-08-04",
+          "week_end":   "2025-08-10"
+        }
+        Creates header + daily lines (hours start at 0).
+        """
+        driver_id = request.data.get('driver_id')
+        ws = parse_date(request.data.get('week_start'))
+        we = parse_date(request.data.get('week_end'))
+
+        if not (driver_id and ws and we and we >= ws):
+            return Response(
+                {"detail": "driver_id, week_start, week_end required (week_end >= week_start)."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        pr = PayReport.objects.create(
+            driver_id=driver_id,
+            week_start=ws, week_end=we,
+            fuel_program=Decimal('0.00'),
+            fuel_pilot_or_kt=Decimal('0.00'),
+            fuel_surcharge=Decimal('0.00'),
+            total_weight_or_hours=Decimal('0.00'),
+            total_truck_paid=Decimal('0.00'),
+            total_amount=Decimal('0.00'),
+            total_due=Decimal('0.00'),
+            created_at=timezone.now(),
+            updated_at=timezone.now(),
+        )
+
+        # Active driver assignments overlapping the week
+        assignments = JobDriverAssignment.objects.select_related(
+            'job',
+            'driver_truck__driver',
+            'driver_truck__truck',
+            'job__loading_address',
+            'job__unloading_address'
+        ).filter(
+            driver_truck__driver_id=driver_id,
+            assigned_at__date__lte=we
+        ).filter(
+            Q(unassigned_at__isnull=True) | Q(unassigned_at__date__gte=ws)
+        )
+
+        # Seed one line per day per assignment
+        day = ws
+        while day <= we:
+            for a in assignments:
+                PayReportLine.objects.create(
+                    report=pr,
+                    job=a.job,
+                    date=day,
+                    job_number=a.job.job_number,
+                    truck_number=a.driver_truck.truck.truck_number,
+                    trailer_number='',
+                    loaded=(a.job.loading_address.location_name or str(a.job.loading_address)) if a.job.loading_address else '',
+                    unloaded=(a.job.unloading_address.location_name or str(a.job.unloading_address)) if a.job.unloading_address else '',
+                    weight_or_hour=Decimal('0.00'),
+                    truck_paid=(getattr(a, 'rate', None) or Decimal('0.00')),
+                    total=Decimal('0.00'),
+                    trailer_rent=Decimal('0.00'),
+                    broker_charge=Decimal('0.00'),
+                    contractor_paid=Decimal('0.00'),
+                    created_at=timezone.now(),
+                )
+            day += timedelta(days=1)
+
+        pr.recalc_from_lines()
+        return Response(self.get_serializer(pr).data, status=status.HTTP_201_CREATED)
+
+
+class PayReportLineViewSet(viewsets.ModelViewSet):
+    queryset = PayReportLine.objects.select_related('report', 'job')
+    serializer_class = PayReportLineSerializer
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        report_id = self.request.query_params.get('report_id')
+        job_id    = self.request.query_params.get('job_id')
+        if report_id:
+            qs = qs.filter(report_id=report_id)
+        if job_id:
+            qs = qs.filter(job_id=job_id)
+        return qs
+
+    def perform_update(self, serializer):
+        line = serializer.save()  # model.save() recomputes totals
+        line.report.recalc_from_lines()

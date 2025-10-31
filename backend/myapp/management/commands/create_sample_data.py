@@ -5,7 +5,7 @@ from datetime import date, timedelta
 from decimal import Decimal
 from myapp.models import (
     Customer, Job, Address, Operator, Truck, Driver, DriverTruckAssignment,
-    Invoice, InvoiceLineItem
+    Invoice, InvoiceLine
 )
 
 
@@ -213,124 +213,100 @@ class Command(BaseCommand):
         # Create sample invoices
         invoices_data = [
             {
-                'invoice_no': 'INV-000001',
                 'invoice_date': date.today() - timedelta(days=25),
-                'due_date': date.today() + timedelta(days=5),
                 'status': 'Sent',
-                'company_name': 'M Eaton Trucking LLC',
-                'company_address': '15790 320th Ave, Waseca, MN 56093',
                 'customer': customers[0],  # Rochester Sand & Gravel
-                'customer_name': 'Rochester Sand & Gravel',
-                'customer_address': '4105 East River Road NE, Rochester MN 55906',
                 'job': jobs[0],
-                'tax_rate': Decimal('0.0875'),  # 8.75%
-                'created_by': user
             },
             {
-                'invoice_no': 'INV-000002',
                 'invoice_date': date.today() - timedelta(days=10),
-                'due_date': date.today() + timedelta(days=20),
                 'status': 'Draft',
-                'company_name': 'M Eaton Trucking LLC',
-                'company_address': '15790 320th Ave, Waseca, MN 56093',
                 'customer': customers[1],  # Minneapolis Construction Co.
-                'customer_name': 'Minneapolis Construction Co.',
-                'customer_address': '1234 Industrial Blvd, Minneapolis MN 55401',
                 'job': jobs[1],
-                'tax_rate': Decimal('0.0875'),
-                'created_by': user
             },
             {
-                'invoice_no': 'INV-000003',
                 'invoice_date': date.today() - timedelta(days=45),
-                'due_date': date.today() - timedelta(days=15),
                 'status': 'Paid',
-                'company_name': 'M Eaton Trucking LLC',
-                'company_address': '15790 320th Ave, Waseca, MN 56093',
-                'customer': customers[2],  # St. Paul Materials
-                'customer_name': 'St. Paul Materials',
-                'customer_address': '5678 Commerce Drive, St. Paul MN 55102',
-                'tax_rate': Decimal('0.0875'),
-                'created_by': user
+                'customer': customers[0],  # Rochester Sand & Gravel
+                'job': jobs[0],
             }
         ]
         
         invoices = []
-        for invoice_data in invoices_data:
-            invoice, created = Invoice.objects.get_or_create(
-                invoice_no=invoice_data['invoice_no'],
-                defaults=invoice_data
-            )
-            invoices.append(invoice)
-            if created:
+        for idx, invoice_data in enumerate(invoices_data):
+            try:
+                invoice = Invoice.objects.create(**invoice_data)
+                invoices.append(invoice)
                 self.stdout.write(f'Created invoice: {invoice.invoice_no}')
+            except Exception as e:
+                self.stdout.write(self.style.WARNING(f'Could not create invoice {idx+1}: {str(e)}'))
+                # If invoice already exists, try to find it
+                if len(invoices) < len(invoices_data):
+                    # Try to get existing invoice for this customer and job
+                    existing = Invoice.objects.filter(
+                        customer=invoice_data['customer'],
+                        job=invoice_data['job']
+                    ).first()
+                    if existing:
+                        invoices.append(existing)
+                        self.stdout.write(f'Using existing invoice: {existing.invoice_no}')
         
-        # Create sample line items
+        # Create sample invoice lines
         line_items_data = [
             # Invoice 1 line items
             {
                 'invoice': invoices[0],
-                'date': date.today() - timedelta(days=28),
-                'truck': trucks[0],
-                'bol_scale_ticket': '7 Jireh 7',
-                'description': '4952467-19 Dodge Center',
-                'weight_time': Decimal('10.5'),
-                'rate': Decimal('114.00')
+                'service_date': date.today() - timedelta(days=28),
+                'description': 'Concrete delivery - 4952467-19 Dodge Center',
+                'quantity': Decimal('10.5'),
+                'unit_price': Decimal('114.00')
             },
             {
                 'invoice': invoices[0],
-                'date': date.today() - timedelta(days=29),
-                'truck': trucks[0],
-                'bol_scale_ticket': '7 Jireh 7',
-                'description': '4952467-19 Dodge Center',
-                'weight_time': Decimal('6.5'),
-                'rate': Decimal('114.00')
+                'service_date': date.today() - timedelta(days=29),
+                'description': 'Gravel hauling - 4952467-19 Dodge Center',
+                'quantity': Decimal('6.5'),
+                'unit_price': Decimal('114.00')
             },
             # Invoice 2 line items
             {
                 'invoice': invoices[1],
-                'date': date.today() - timedelta(days=13),
-                'truck': trucks[1],
-                'bol_scale_ticket': 'MSP-001',
+                'service_date': date.today() - timedelta(days=13),
                 'description': 'Minneapolis Highway Project - Phase 1',
-                'weight_time': Decimal('8.0'),
-                'rate': Decimal('125.00')
+                'quantity': Decimal('8.0'),
+                'unit_price': Decimal('125.00')
             },
             {
                 'invoice': invoices[1],
-                'date': date.today() - timedelta(days=12),
-                'truck': trucks[1],
-                'bol_scale_ticket': 'MSP-002',
+                'service_date': date.today() - timedelta(days=12),
                 'description': 'Minneapolis Highway Project - Phase 2',
-                'weight_time': Decimal('12.0'),
-                'rate': Decimal('125.00')
+                'quantity': Decimal('12.0'),
+                'unit_price': Decimal('125.00')
             },
             # Invoice 3 line items
             {
                 'invoice': invoices[2],
-                'date': date.today() - timedelta(days=47),
-                'truck': trucks[0],
-                'bol_scale_ticket': 'SP-001',
-                'description': 'St. Paul Materials - Bulk Delivery',
-                'weight_time': Decimal('15.0'),
-                'rate': Decimal('110.00')
+                'service_date': date.today() - timedelta(days=47),
+                'description': 'Sand delivery - Bulk Delivery',
+                'quantity': Decimal('15.0'),
+                'unit_price': Decimal('110.00')
+            },
+            {
+                'invoice': invoices[2],
+                'service_date': date.today() - timedelta(days=46),
+                'description': 'Equipment rental',
+                'quantity': Decimal('1.0'),
+                'unit_price': Decimal('200.00')
             }
         ]
         
         for line_item_data in line_items_data:
-            line_item, created = InvoiceLineItem.objects.get_or_create(
-                invoice=line_item_data['invoice'],
-                date=line_item_data['date'],
-                bol_scale_ticket=line_item_data['bol_scale_ticket'],
-                defaults=line_item_data
-            )
-            if created:
-                self.stdout.write(f'Created line item: {line_item.description}')
+            line_item = InvoiceLine.objects.create(**line_item_data)
+            self.stdout.write(f'Created line item: {line_item.description}')
         
-        # Update invoice totals
+        # Recalculate invoice totals (handled by signal, but ensure it's done)
         for invoice in invoices:
-            invoice.calculate_totals()
-            invoice.save(update_fields=['subtotal', 'tax_amount', 'total'])
+            invoice.recalc_totals()
         
         self.stdout.write(
             self.style.SUCCESS(
@@ -340,7 +316,7 @@ class Command(BaseCommand):
                 f'- {len(jobs)} jobs\n'
                 f'- {len(trucks)} trucks\n'
                 f'- {len(invoices)} invoices\n'
-                f'- {len(line_items_data)} line items\n'
+                f'- {len(line_items_data)} invoice lines\n'
                 f'- 1 admin user (username: admin, password: admin123)'
             )
         )

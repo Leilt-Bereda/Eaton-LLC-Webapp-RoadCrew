@@ -193,6 +193,8 @@ class Invoice(models.Model):
     job        = models.ForeignKey('Job', on_delete=models.PROTECT, related_name='invoices')
     invoice_no = models.CharField(max_length=32, unique=True, editable=False)
     invoice_date = models.DateField(default=timezone.now)
+    start_date = models.DateField(null=True, blank=True, help_text="Start of the invoice period (week range)")
+    end_date = models.DateField(null=True, blank=True, help_text="End of the invoice period (week range)")
     status       = models.CharField(max_length=16, choices=STATUS_CHOICES, default='Draft')
     total_amount = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0.00'))
 

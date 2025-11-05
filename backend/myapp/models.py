@@ -125,7 +125,16 @@ class Job(models.Model):
         through='JobDriverAssignment',
         related_name='jobs'
     )
-
+    prime_contractor_customer = models.ForeignKey(
+        'Customer',
+        on_delete=models.PROTECT,
+        related_name='jobs_as_prime',
+        null=True, blank=True,
+    )
+    class Meta:
+        indexes = [
+            models.Index(fields=['prime_contractor_customer']),  # fast filtering
+        ]
     def __str__(self):
         return f"Job {self.job_number} - {self.project}"
 
@@ -236,32 +245,43 @@ def _invoice_totals_sync(sender, instance, **kwargs):
     instance.invoice.recalc_totals()
 
 
-
 class PayReport(models.Model):
     id = models.BigAutoField(primary_key=True)
-    driver = models.ForeignKey('Driver', db_column='driver_id', on_delete=models.PROTECT, related_name='pay_reports', null=True, blank=True, )
+    driver = models.ForeignKey('Driver', db_column='driver_id',
+                               on_delete=models.PROTECT, related_name='pay_reports',
+                               null=True, blank=True)
 
     week_start = models.DateField(db_column='week_start')
     week_end   = models.DateField(db_column='week_end')
 
-    total_weight_or_hours = models.DecimalField(db_column='total_weight_or_hours', max_digits=14, decimal_places=2)
-    total_truck_paid      = models.DecimalField(db_column='total_truck_paid', max_digits=14, decimal_places=2)
-    total_amount          = models.DecimalField(db_column='total_amount', max_digits=14, decimal_places=2)
-    total_due             = models.DecimalField(db_column='total_due', max_digits=14, decimal_places=2)
+    total_weight_or_hours = models.DecimalField(db_column='total_weight_or_hours', max_digits=14, decimal_places=2, default=Decimal('0.00'))
+    total_truck_paid      = models.DecimalField(db_column='total_truck_paid',      max_digits=14, decimal_places=2, default=Decimal('0.00'))
+    total_amount          = models.DecimalField(db_column='total_amount',          max_digits=14, decimal_places=2, default=Decimal('0.00'))
+    total_due             = models.DecimalField(db_column='total_due',             max_digits=14, decimal_places=2, default=Decimal('0.00'))
 
-    created_at = models.DateTimeField(db_column='created_at')
-    updated_at = models.DateTimeField(db_column='updated_at')
+    # PDF footer = report-level
+    fuel_program     = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0.00'))
+    fuel_pilot_or_kt = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0.00'))
+    fuel_surcharge   = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0.00'))
+
+    created_at = models.DateTimeField(db_column='created_at', auto_now_add=True)
+    updated_at = models.DateTimeField(db_column='updated_at', auto_now=True)
 
     class Meta:
         db_table = 'myapp_payreport'
         managed = True
-        unique_together = (('driver', 'week_start', 'week_end'),)
         constraints = [
-            models.CheckConstraint(check=models.Q(week_end__gte=models.F('week_start')), name='pr_week_start_lte_end')
+            models.CheckConstraint(
+                check=models.Q(week_end__gte=models.F('week_start')),
+                name='pr_week_start_lte_end'
+            )
         ]
-
+        indexes = [  
+            models.Index(fields=['driver', 'week_start', 'week_end'], name='pr_driver_week_idx'),
+        ]
     def __str__(self):
-        return f"PR-{self.id} {self.driver.name} [{self.week_start} → {self.week_end}]"
+        who = getattr(self.driver, 'name', None) or self.driver_id
+        return f"PR-{self.id} {who} [{self.week_start} → {self.week_end}]"
 
     def recalc_from_lines(self):
         agg = self.lines.aggregate(
@@ -269,18 +289,18 @@ class PayReport(models.Model):
             max_rate=models.Max('truck_paid'),
             sum_total=models.Sum('total'),
         )
-        sum_hours = agg['sum_hours'] or Decimal('0.00')
-        max_rate  = agg['max_rate']  or Decimal('0.00')
-        sum_total = agg['sum_total'] or Decimal('0.00')
+        D = lambda k: (agg[k] or Decimal('0.00'))
 
-        self.total_weight_or_hours = sum_hours
-        self.total_truck_paid      = max_rate
-        self.total_amount          = sum_total
+        self.total_weight_or_hours = D('sum_hours')
+        self.total_truck_paid      = D('max_rate')
+        self.total_amount          = D('sum_total')
 
-        
+        # Footer formula from your sample:
+        self.total_due = (
+            self.total_amount - self.fuel_program - self.fuel_pilot_or_kt + self.fuel_surcharge
+        ).quantize(Decimal('0.01'))
 
-        self.updated_at = timezone.now()
-        super().save(update_fields=[
+        self.save(update_fields=[
             'total_weight_or_hours', 'total_truck_paid', 'total_amount', 'total_due', 'updated_at'
         ])
 
@@ -295,22 +315,18 @@ class PayReportLine(models.Model):
     loaded         = models.CharField(db_column='loaded', max_length=255)
     unloaded       = models.CharField(db_column='unloaded', max_length=255)
 
-    weight_or_hour = models.DecimalField(db_column='weight_or_hour', max_digits=12, decimal_places=2)  # hours
-    truck_paid     = models.DecimalField(db_column='truck_paid', max_digits=14, decimal_places=2)      # hourly rate
+    weight_or_hour = models.DecimalField(db_column='weight_or_hour', max_digits=12, decimal_places=2, default=Decimal('0.00'))
+    truck_paid     = models.DecimalField(db_column='truck_paid',     max_digits=14, decimal_places=2, default=Decimal('0.00'))
 
-    total           = models.DecimalField(db_column='total', max_digits=14, decimal_places=2)
-    trailer_rent    = models.DecimalField(db_column='trailer_rent', max_digits=14, decimal_places=2)
-    broker_charge   = models.DecimalField(db_column='broker_charge', max_digits=14, decimal_places=2)
-    contractor_paid = models.DecimalField(db_column='contractor_paid', max_digits=14, decimal_places=2)
-    fuel_program     = models.DecimalField(db_column='fuel_program', max_digits=12, decimal_places=2)
-    fuel_pilot_or_kt = models.DecimalField(db_column='fuel_pilot_or_kt', max_digits=12, decimal_places=2)
-    fuel_surcharge   = models.DecimalField(db_column='fuel_surcharge', max_digits=12, decimal_places=2)
+    total           = models.DecimalField(db_column='total',           max_digits=14, decimal_places=2, default=Decimal('0.00'))
+    trailer_rent    = models.DecimalField(db_column='trailer_rent',    max_digits=14, decimal_places=2, default=Decimal('0.00'))
+    broker_charge   = models.DecimalField(db_column='broker_charge',   max_digits=14, decimal_places=2, default=Decimal('0.00'))
+    contractor_paid = models.DecimalField(db_column='contractor_paid', max_digits=14, decimal_places=2, default=Decimal('0.00'))
 
-
-    created_at = models.DateTimeField(db_column='created_at')
+    created_at = models.DateTimeField(db_column='created_at', auto_now_add=True)
 
     job    = models.ForeignKey('Job', on_delete=models.SET_NULL, null=True, blank=True, related_name='pay_lines')
-    report = models.ForeignKey('PayReport', on_delete=models.CASCADE, related_name='lines', null=True, blank=True)
+    report = models.ForeignKey('PayReport', on_delete=models.CASCADE,  null=True, blank=True, related_name='lines')
 
     class Meta:
         db_table = 'myapp_payreportline'
@@ -324,25 +340,10 @@ class PayReportLine(models.Model):
         return f"{self.date} | {self.job_number} | ${self.contractor_paid}"
 
     def compute_amounts(self):
-        # total = hours × rate; contractor_paid = total (trailer/broker kept at 0.00)
-
-        line_total = (self.weight_or_hour or Decimal('0.00')) * (self.truck_paid or Decimal('0.00'))
-        self.total = Decimal(line_total).quantize(Decimal('0.01'))
-        self.trailer_rent  = self.trailer_rent  or Decimal('0.00')
-        self.broker_charge = self.broker_charge or Decimal('0.00')
+        # total = hours × rate; contractor_paid mirrors total for now
+        self.total = (self.weight_or_hour or 0) * (self.truck_paid or 0)
         self.contractor_paid = self.total
-        fpk = self.fuel_pilot_or_kt or Decimal('0.00')
-        fs  = self.fuel_surcharge   or Decimal('0.00')
-        self.total_due = (self.total_amount - fpk + fs).quantize(Decimal('0.01'))
 
     def save(self, *args, **kwargs):
-        if self.created_at is None:
-            self.created_at = timezone.now()
         self.compute_amounts()
         super().save(*args, **kwargs)
-
-
-@receiver(post_save, sender=PayReportLine)
-@receiver(post_delete, sender=PayReportLine)
-def _sync_payreport_totals(sender, instance, **kwargs):
-    instance.report.recalc_from_lines()

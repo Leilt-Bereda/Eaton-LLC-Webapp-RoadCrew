@@ -9,6 +9,7 @@ from rest_framework.decorators import action
 from django.utils.dateparse import parse_date
 from datetime import timedelta
 from decimal import Decimal
+from django.utils import timezone
 
 
 
@@ -38,6 +39,7 @@ class AddressViewSet(viewsets.ModelViewSet):
 class JobViewSet(viewsets.ModelViewSet):
     serializer_class = JobSerializer
     queryset = Job.objects.select_related(
+        'prime_contractor_customer',
         'loading_address',
         'unloading_address',
         'backhaul_loading_address',
@@ -52,7 +54,7 @@ class JobViewSet(viewsets.ModelViewSet):
         if date:
             qs = qs.filter(job_date=date)
         if customer_id:
-            qs = qs.filter(project__customer_id=customer_id)  # adjust if your FK path differs
+            qs = qs.filter(prime_contractor_customer_id=customer_id) # adjust if your FK path differs
         if q:
             qs = qs.filter(Q(job_number__icontains=q) | Q(project__icontains=q))
         return qs
@@ -66,9 +68,15 @@ class JobDriverAssignmentViewSet(viewsets.ModelViewSet):
     serializer_class = JobDriverAssignmentSerializer
     
 class CustomerViewSet(viewsets.ModelViewSet):
-    queryset = Customer.objects.all()
+    queryset = Customer.objects.all().order_by('company_name')
     serializer_class = CustomerSerializer
 
+    def get_queryset(self):
+        qs = super().get_queryset()
+        q = self.request.query_params.get('q')
+        if q:
+            qs = qs.filter(company_name__icontains=q)
+        return qs
 class DriverViewSet(viewsets.ModelViewSet):
     queryset = Driver.objects.all()
     serializer_class = DriverSerializer
@@ -249,6 +257,12 @@ class PayReportViewSet(viewsets.ModelViewSet):
             return Response(
                 {"detail": "driver_id, week_start, week_end required (week_end >= week_start)."},
                 status=status.HTTP_400_BAD_REQUEST
+            )
+        exists = PayReport.objects.filter(driver_id=driver_id, week_start=ws, week_end=we).exists()
+        if exists:
+            return Response(
+                {"detail": "Report already exists for this driver/week."},
+                status=status.HTTP_409_CONFLICT  # same as 409
             )
 
         pr = PayReport.objects.create(

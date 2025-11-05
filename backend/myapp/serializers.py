@@ -47,6 +47,13 @@ class JobDriverAssignmentSerializer(serializers.ModelSerializer):
         
 class JobSerializer(serializers.ModelSerializer):
     # Writeable FK fields:
+    prime_contractor_customer = serializers.PrimaryKeyRelatedField(
+        queryset=Customer.objects.all(), allow_null=True, required=False
+    )
+    prime_contractor_name = serializers.CharField(
+        source='prime_contractor_customer.company_name', read_only=True
+    )
+
     loading_address           = serializers.PrimaryKeyRelatedField(
                                     queryset=Address.objects.all()
                                 )
@@ -78,6 +85,8 @@ class JobSerializer(serializers.ModelSerializer):
         model = Job
         fields = [
             'id',
+            'prime_contractor_customer',
+            'prime_contractor_name',
             'project',
             'prime_contractor',
             'prime_contractor_project_number',
@@ -114,7 +123,7 @@ class JobSerializer(serializers.ModelSerializer):
             'driver_assignments',
             'created_at',
         ]
-        read_only_fields = ['created_at']
+        read_only_fields = ['created_at', 'prime_contractor_name']
 
 class CustomerSerializer(serializers.ModelSerializer):
     class Meta:
@@ -265,3 +274,9 @@ class PayReportSerializer(serializers.ModelSerializer):
             'total_weight_or_hours', 'total_truck_paid', 'total_amount', 'total_due',
             'created_at', 'updated_at',
         ]
+    def validate(self, attrs):
+            ws = attrs.get('week_start', getattr(self.instance, 'week_start', None))
+            we = attrs.get('week_end',   getattr(self.instance, 'week_end',   None))
+            if ws and we and we < ws:
+                raise serializers.ValidationError({"week_end": "must be on/after week_start"})
+            return attrs

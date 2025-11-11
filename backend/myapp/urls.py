@@ -1,6 +1,8 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from rest_framework_simplejwt.views import TokenVerifyView
+from .views import AuthViewSet
+
 
 from . import views
 from .views import (
@@ -8,7 +10,7 @@ from .views import (
     UserViewSet, UserRoleViewSet, CommentViewSet, TruckViewSet,
     DriverTruckAssignmentViewSet, RegisterView, CustomTokenObtainPairView, OperatorViewSet, AddressViewSet, JobDriverAssignmentViewSet,
     CustomTokenRefreshView, protected_view, assign_truck_to_driver, unassigned_trucks,
-    PayReportViewSet,
+    PayReportViewSet, PayReportLineViewSet,
 )
 
 router = DefaultRouter()
@@ -25,6 +27,8 @@ router.register(r'driver-truck-assignments', DriverTruckAssignmentViewSet)
 router.register(r'operators', OperatorViewSet, basename='operator')
 router.register(r'job-driver-assignments', JobDriverAssignmentViewSet)
 router.register(r'pay-reports', PayReportViewSet, basename='pay-report')
+router.register(r'pay-report-lines', PayReportLineViewSet, basename='pay-report-line')
+router.register(r'auth', AuthViewSet, basename='auth')
 
 
 urlpatterns = [

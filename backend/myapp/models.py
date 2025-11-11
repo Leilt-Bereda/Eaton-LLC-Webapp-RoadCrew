@@ -313,3 +313,49 @@ def _prl_after_save(sender, instance: PayReportLine, **kwargs):
 @receiver(post_delete, sender=PayReportLine)
 def _prl_after_delete(sender, instance: PayReportLine, **kwargs):
     instance.report.recalc_totals(save=True)
+    # app/models.py
+import hashlib, secrets, string
+from django.conf import settings
+from django.db import models
+from django.utils import timezone
+from datetime import timedelta
+
+class PasswordOTP(models.Model):
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="password_otps")
+    code_hash = models.CharField(max_length=64, db_index=True)  # sha256 hex
+    salt = models.CharField(max_length=16)
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField()
+    attempts = models.PositiveSmallIntegerField(default=0)
+    used = models.BooleanField(default=False)
+    purpose = models.CharField(max_length=32, default="password_reset")
+
+    class Meta:
+        indexes = [models.Index(fields=["user", "created_at"])]
+
+    @staticmethod
+    def _hash(code: str, salt: str) -> str:
+        return hashlib.sha256((salt + code).encode()).hexdigest()
+
+    @classmethod
+    def create_for_user(cls, user, ttl_minutes=10, length=6):
+        code = "".join(secrets.choice(string.digits) for _ in range(length))
+        salt = secrets.token_hex(4)
+        otp = cls.objects.create(
+            user=user,
+            code_hash=cls._hash(code, salt),
+            salt=salt,
+            expires_at=timezone.now() + timedelta(minutes=ttl_minutes),
+        )
+        return otp, code  # return plaintext once to email it
+
+    def verify(self, code: str, max_attempts=5) -> bool:
+        if self.used or timezone.now() > self.expires_at or self.attempts >= max_attempts:
+            return False
+        self.attempts += 1
+        ok = self.code_hash == self._hash(code, self.salt)
+        if ok:
+            self.used = True
+        self.save(update_fields=["attempts", "used"])
+        return ok
+

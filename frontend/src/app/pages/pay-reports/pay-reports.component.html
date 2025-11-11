@@ -1,28 +1,26 @@
 <div class="d-flex justify-content-between align-items-center mb-3">
     <h3>Pay Reports</h3>
     <div class="d-flex gap-2">
-      <button class="btn btn-outline-secondary" [routerLink]="['/pay-reports/new']">
-        Add Report
+    <button class="btn btn-outline-danger" [disabled]="selected.length === 0" (click)="deleteSelected()">
+      <i class="material-icons" style="font-size: 16px;">&#xE872;</i> Delete Selected
       </button>
+    <button class="btn btn-primary" (click)="openNewReportDialog()">New Report</button>
     </div>
   </div>
   
   <div class="mb-3 row g-2">
     <div class="col-md-3">
-      <h6>Driver</h6>
-      <input class="form-control" placeholder="Driver" [(ngModel)]="filters.driver" (ngModelChange)="applyFilters()">
+    <input class="form-control" placeholder="Driver..." [(ngModel)]="filters.driver" (ngModelChange)="applyFilters()">
     </div>
     <div class="col-md-3">
-      <h6>Start Date</h6>
       <input class="form-control" type="date" [(ngModel)]="filters.from" (ngModelChange)="applyFilters()">
     </div>
     <div class="col-md-3">
-      <h6>End Date</h6>
       <input class="form-control" type="date" [(ngModel)]="filters.to" (ngModelChange)="applyFilters()">
     </div>
   </div>
   
-  <app-card cardTitle="Reports" [options]="false" blockClass="table-border-style">
+<app-card cardTitle="Current Pay Reports" [options]="false" blockClass="table-border-style">
     <div class="table-responsive">
       <table class="table">
         <thead>
@@ -34,8 +32,8 @@
             <th>Job #</th>
             <th>Weight/Hour</th>
             <th>Truck Paid</th>
-            <th>Total</th>
-            <th></th>
+            <th class="text-end">Total</th>
+            <th>Actions</th>
           </tr>
         </thead>
         <tbody>
@@ -43,13 +41,23 @@
             <td><input type="checkbox" [(ngModel)]="r.selected" (ngModelChange)="onSelect()" /></td>
             <td>{{ r.weekStart }} – {{ r.weekEnd }}</td>
             <td>{{ r.driverName }}</td>
-            <td><!-- optional: show first line's truck or 'multi' --></td>
-            <td><!-- optional: show one job or 'multi' --></td>
+            <td></td>
+            <td></td>
             <td>{{ r.totalWeightOrHours | number:'1.0-2' }}</td>
             <td>{{ r.totalTruckPaid | currency }}</td>
-            <td><strong>{{ r.totalAmount | currency }}</strong></td>
+            <td class="text-end"><strong>{{ r.totalAmount | currency }}</strong></td>
             <td>
-              <a class="btn btn-sm btn-outline-primary" [routerLink]="['/pay-reports', r.id]">Open</a>
+              <div class="action-buttons-row">
+                <a href="#" class="view" title="Open" (click)="open(r.id); $event.preventDefault()" data-toggle="tooltip">
+                  <i class="material-icons">&#xE417;</i>
+                </a>
+                <a href="#" class="edit" title="Edit" (click)="edit(r.id); $event.preventDefault()" data-toggle="tooltip">
+                  <i class="material-icons">&#xE254;</i>
+                </a>
+                <a href="#" class="delete" title="Delete" (click)="delete(r.id); $event.preventDefault()" data-toggle="tooltip">
+                  <i class="material-icons">&#xE872;</i>
+                </a>
+              </div>
             </td>
           </tr>
           <tr *ngIf="!reports?.length">
@@ -59,4 +67,11 @@
       </table>
     </div>
   </app-card>
+  
+  <app-new-pay-report-dialog
+    *ngIf="showNewModal"
+    [drivers]="drivers"
+    (cancel)="onCloseNew()"
+    (save)="onSaveNew($event)">
+  </app-new-pay-report-dialog>
   

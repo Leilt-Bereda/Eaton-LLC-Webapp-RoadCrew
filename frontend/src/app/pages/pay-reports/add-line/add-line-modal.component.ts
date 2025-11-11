@@ -120,8 +120,7 @@ export class AddLineModalComponent implements OnInit, OnDestroy {
     this.showSuggestions = false;
   }
 
-  private applyJobAutoFill(job: JobLite) {
-    // Prefer location_name, then street address
+  private applyJobAutoFill(job: JobLite | any) {
     const loaded = job.loading_address_info
       ? (job.loading_address_info.location_name || job.loading_address_info.street_address || '')
       : '';
@@ -129,15 +128,17 @@ export class AddLineModalComponent implements OnInit, OnDestroy {
       ? (job.unloading_address_info.location_name || job.unloading_address_info.street_address || '')
       : '';
 
-    this.form.patchValue(
-      {
-        loaded,
-        unloaded,
-        // If your API exposes a default rate on the job, you can set it here:
-        // truckPaid: (job as any).defaultTruckPaid ?? 0,
-      },
-      { emitEvent: false }
-    );
+    const basePatch: any = { loaded, unloaded };
+    const controlNames = Object.keys(this.form.controls);
+    for (const key of controlNames) {
+      if (key in job) basePatch[key] = job[key];
+    }
+    if (job.defaultTruckPaid != null && basePatch.truckPaid == null) basePatch.truckPaid = Number(job.defaultTruckPaid) || 0;
+    if (job.defaultTrailerRent != null && basePatch.trailerRent == null) basePatch.trailerRent = Number(job.defaultTrailerRent) || 0;
+    if (job.defaultBrokerCharge != null && basePatch.brokerCharge == null) basePatch.brokerCharge = Number(job.defaultBrokerCharge) || 0;
+    if (job.defaultContractorPaid != null && basePatch.contractorPaid == null) basePatch.contractorPaid = Number(job.defaultContractorPaid) || 0;
+
+    this.form.patchValue(basePatch, { emitEvent: false });
   }
 
   // ---- Modal controls ----
@@ -153,7 +154,7 @@ export class AddLineModalComponent implements OnInit, OnDestroy {
     }
     this.saving = true;
 
-    // Backend expects PayReportLine fields (driverName is NOT sent)
+    // Backend expects PayReportLine fields
     const payload = {
       date: this.form.value.date,
       jobNumber: this.form.value.jobNumber,
@@ -169,7 +170,8 @@ export class AddLineModalComponent implements OnInit, OnDestroy {
       contractorPaid: Number(this.form.value.contractorPaid) || 0
     } as any;
 
-    this.reports.createLine(this.reportId, payload).subscribe({
+    // Use top-level pay-report-lines endpoint
+    this.reports.createLineTop(this.reportId, payload).subscribe({
       next: (created) => {
         this.saving = false;
         this.created.emit(created);

@@ -16,6 +16,14 @@ export interface JobLite {
 export class PayReportsService {
   constructor(private http: HttpClient) {}
 
+  list(params?: { driver?: number; from?: string; to?: string; }): Observable<PayReport[]> {
+    let httpParams = new HttpParams();
+    if (params?.driver != null) httpParams = httpParams.set('driver', String(params.driver));
+    if (params?.from) httpParams = httpParams.set('from', params.from);
+    if (params?.to) httpParams = httpParams.set('to', params.to);
+    return this.http.get<PayReport[]>('/api/pay-reports', { params: httpParams });
+  }
+
   createReport(payload: {
     weekStart: string;   // "YYYY-MM-DD"
     weekEnd: string;     // "YYYY-MM-DD"
@@ -33,6 +41,28 @@ export class PayReportsService {
 
   getReport(id: number): Observable<PayReport> {
     return this.http.get<PayReport>(`/api/pay-reports/${id}`);
+  }
+
+  deleteReport(id: number): Observable<void> {
+    return this.http.delete<void>(`/api/pay-reports/${id}`);
+  }
+
+  // Top-level pay-report-lines
+  listLines(reportId: number): Observable<PayReportLine[]> {
+    const params = new HttpParams().set('report', String(reportId));
+    return this.http.get<PayReportLine[]>(`/api/pay-report-lines`, { params });
+  }
+
+  createLineTop(reportId: number, payload: Partial<PayReportLine>): Observable<PayReportLine> {
+    return this.http.post<PayReportLine>(`/api/pay-report-lines`, { report: reportId, ...payload });
+  }
+
+  updateLineTop(lineId: number, payload: Partial<PayReportLine>): Observable<PayReportLine> {
+    return this.http.patch<PayReportLine>(`/api/pay-report-lines/${lineId}`, payload);
+  }
+
+  deleteLineTop(lineId: number): Observable<void> {
+    return this.http.delete<void>(`/api/pay-report-lines/${lineId}`);
   }
 
   createLine(reportId: number, payload: Partial<PayReportLine> & {
@@ -56,6 +86,6 @@ export class JobsService {
   }
 
   getByJobNumber(jobNumber: string): Observable<any> {
-    return this.http.get(`/api/jobs/${encodeURIComponent(jobNumber)}`);
+    return this.http.get(`/api/jobs/by-number/${encodeURIComponent(jobNumber)}`);
   }
 }

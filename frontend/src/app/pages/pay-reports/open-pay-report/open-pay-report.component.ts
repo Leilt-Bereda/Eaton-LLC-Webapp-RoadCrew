@@ -1,5 +1,6 @@
 import { Component, OnInit, ViewChild, ElementRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, RouterModule } from '@angular/router';
 import { PayReport, PayReportLine } from 'src/app/models/pay-report.model';
 import { PAY_REPORTS_MOCK } from './mock-pay-reports';
@@ -17,7 +18,7 @@ type NumericLineKeys =
 @Component({
   selector: 'app-open-pay-report',
   standalone: true,
-  imports: [CommonModule, RouterModule, AddLineModalComponent],
+  imports: [CommonModule, FormsModule, RouterModule, AddLineModalComponent],
   templateUrl: './open-pay-report.component.html',
   styleUrls: ['./open-pay-report.component.scss']
 })
@@ -27,31 +28,43 @@ export class OpenPayReportComponent implements OnInit {
   id!: number;
   report!: PayReport;
   addOpen = false;
+  isEditing = false;
+  editingLine: PayReportLine | null = null;
 
   constructor(private route: ActivatedRoute, private svc: PayReportsService) {}
 
   ngOnInit(): void {
     this.id = Number(this.route.snapshot.paramMap.get('id'));
-    // TODO: fetch the report by id
-    // this.service.get(this.id).subscribe(r => this.report = r);
-    // 🔹 Load mock by id (replace with service call later)
+    const qp = this.route.snapshot.queryParamMap;
+    this.svc.getReport(this.id).subscribe({
+      next: (r) => {
+        this.report = r as any;
+      },
+      error: () => {
     const mock = PAY_REPORTS_MOCK[this.id];
     if (mock) {
-      this.report = { ...mock };
-
-      // If you want to recompute header rollups from lines:
-      this.report.totalWeightOrHours = this.sum('weightOrHour');
-      this.report.totalTruckPaid = this.sum('truckPaid');
-      this.report.totalAmount = this.sum('total');
-      this.report.totalDue = this.totalDue;
+          this.report = { ...mock } as any;
     } else {
-      // show a friendly state or navigate back
-      // this.router.navigate(['/pay-reports']);
-    }
-    if (this.route.snapshot.queryParamMap.get('add') === '1') {
-        setTimeout(() => this.openAddModal(), 0);
+          // Initialize from query params
+          this.report = {
+            id: this.id,
+            driverId: 0,
+            driverName: qp.get('driver') ?? 'Driver',
+            weekStart: qp.get('from') ?? '',
+            weekEnd: qp.get('to') ?? '',
+            lines: [],
+            totalWeightOrHours: 0,
+            totalTruckPaid: 0,
+            totalAmount: 0,
+            totalDue: 0,
+            fuelProgram: 0,
+            fuelPilotOrKT: 0,
+            fuelSurcharge: 0
+          } as any;
+        }
       }
-      
+    });
+    if (qp.get('add') === '1') setTimeout(() => this.openAddModal(), 0);
   }
   openAddModal() { this.addOpen = true; }
   onModalClosed() { this.addOpen = false; }
@@ -68,6 +81,67 @@ export class OpenPayReportComponent implements OnInit {
       + (this.report.fuelSurcharge ?? 0);
 
       this.addOpen = false;
+  }
+
+  toggleEdit(): void { 
+    this.isEditing = !this.isEditing;
+    if (!this.isEditing) this.editingLine = null;
+  }
+  saveReport(): void { 
+    // TODO: Save to backend
+    this.isEditing = false;
+  }
+
+  editLineItem(line: PayReportLine): void {
+    this.editingLine = { ...line };
+  }
+
+  saveLineItem(): void {
+    if (!this.editingLine || !this.report) return;
+    const index = this.report.lines.findIndex(item => item.id === this.editingLine!.id);
+    if (index !== -1) {
+      // Auto-calculate total
+      this.editingLine.total = (Number(this.editingLine.weightOrHour) || 0) * (Number(this.editingLine.truckPaid) || 0);
+      this.report.lines[index] = { ...this.editingLine };
+      this.recalculateTotals();
+      // TODO: Save to backend via updateLineTop
+      if (this.editingLine.id) {
+        this.svc.updateLineTop(this.editingLine.id, this.editingLine).subscribe({
+          error: () => console.error('Failed to update line')
+        });
+      }
+    }
+    this.editingLine = null;
+  }
+
+  cancelEditLineItem(): void {
+    this.editingLine = null;
+  }
+
+  deleteLineItem(line: PayReportLine): void {
+    if (!this.report) return;
+    if (confirm('Are you sure you want to delete this line item?')) {
+      this.report.lines = this.report.lines.filter(item => item.id !== line.id);
+      this.recalculateTotals();
+      // TODO: Delete from backend
+      if (line.id) {
+        this.svc.deleteLineTop(line.id).subscribe({
+          error: () => console.error('Failed to delete line')
+        });
+      }
+    }
+  }
+
+  private recalculateTotals(): void {
+    if (!this.report) return;
+    const sum = (k: keyof PayReportLine) => this.report.lines.reduce((s, l) => s + (Number(l[k]) || 0), 0);
+    this.report.totalWeightOrHours = sum('weightOrHour');
+    this.report.totalTruckPaid = sum('truckPaid');
+    this.report.totalAmount = sum('total');
+    this.report.totalDue = this.report.totalAmount
+      + (this.report.fuelProgram ?? 0)
+      + (this.report.fuelPilotOrKT ?? 0)
+      + (this.report.fuelSurcharge ?? 0);
   }
 
   // ------- trackBy used in template -------

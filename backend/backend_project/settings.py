@@ -12,6 +12,7 @@ https://docs.djangoproject.com/en/5.1/ref/settings/
 
 from pathlib import Path
 import os
+import django
 from dotenv import load_dotenv
 from datetime import timedelta
 import dj_database_url
@@ -164,3 +165,19 @@ SIMPLE_JWT = {
     'ALGORITHM': 'HS256',
 }
 # AUTH_USER_MODEL = "myapp.User"
+
+# SMTP2GO Configuration
+EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
+EMAIL_HOST = "mail.smtp2go.com"
+EMAIL_PORT = 2525  # SMTP2GO port (also supports 587, 80, 465)
+EMAIL_USE_TLS = True
+EMAIL_USE_SSL = False  # Use TLS, not SSL
+
+# Credentials from .env file
+EMAIL_HOST_USER = os.environ.get("SMTP_USERNAME")
+EMAIL_HOST_PASSWORD = os.environ.get("SMTP_PASSWORD")
+DEFAULT_FROM_EMAIL = os.environ.get("FROM_EMAIL", "noreply@meatontrucking.com")
+
+# Email timeout settings
+EMAIL_TIMEOUT = 10  # seconds
+

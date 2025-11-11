@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Job, Customer, Driver, Role, User, UserRole, Comment, Truck, DriverTruckAssignment, Operator, Address, JobDriverAssignment, PayReport, PayReportLine, Job, Driver
+from .models import Job, Customer, Driver, Role, User, UserRole, Comment, Truck, DriverTruckAssignment, Operator, Address, JobDriverAssignment,Invoice,InvoiceLine
 from django.contrib.auth import get_user_model
 
 class AddressSerializer(serializers.ModelSerializer):
@@ -166,150 +166,107 @@ class OperatorSerializer(serializers.ModelSerializer):
         model = Operator
         fields = '__all__'
 
-# ---------- Lines ----------
-class PayReportLineReadSerializer(serializers.ModelSerializer):
+
+class InvoiceLineSerializer(serializers.ModelSerializer):
+    # If your model does NOT store `amount`, compute it from qty * unit_price:
+    amount = serializers.SerializerMethodField(read_only=True)
+
+    class Meta:
+        model = InvoiceLine
+        fields = ["id", "invoice", "description", "quantity", "unit_price", "amount"]
+        read_only_fields = ["id"]
+
+    def get_amount(self, obj):
+        # If your model already has `amount` field, replace with: return obj.amount
+        qty = obj.quantity or 0
+        price = obj.unit_price or 0
+        return float(qty) * float(price)
+
+
+class InvoiceSerializer(serializers.ModelSerializer):
+    customer_id = serializers.IntegerField()
+    job_id = serializers.IntegerField( allow_null=True, required=False)
+    lines = InvoiceLineSerializer(many=True, required=False)
+
+    class Meta:
+        model = Invoice
+        fields = [
+            "id",
+            "invoice_no",
+            "invoice_date",
+            "status",
+            "total_amount",     # keep read-only if you compute it server-side
+            "customer_id",
+            "job_id",
+            "lines",
+        ]
+        read_only_fields = ["id", "total_amount"]
+
+    def create(self, validated_data):
+        # pop nested lines (coming from `source="lines"`)
+        lines_data = validated_data.pop("lines", [])
+        invoice = Invoice.objects.create(**validated_data)
+
+        for line in lines_data:
+            InvoiceLine.objects.create(invoice=invoice, **line)
+
+        # Optional: compute total here if not handled by model .save()
+        try:
+            total = 0
+            for l in invoice.lines.all():
+                qty = l.quantity or 0
+                price = l.unit_price or 0
+                total += float(qty) * float(price)
+            invoice.total_amount = total
+            invoice.save(update_fields=["total_amount"])
+        except Exception:
+            pass
+
+        return invoice
+
+    def update(self, instance, validated_data):
+        # Header-only updates (keep line editing for later)
+        validated_data.pop("lines", None)
+        for attr, val in validated_data.items():
+            setattr(instance, attr, val)
+        instance.save()
+        return instance
+class PayReportLineSerializer(serializers.ModelSerializer):
     class Meta:
         model = PayReportLine
         fields = [
-            'id', 'date', 'job', 'job_number',
-            'truck_number', 'trailer_number',
+            'id', 'report', 'job', 'date',
+            'job_number', 'truck_number', 'trailer_number',
             'loaded', 'unloaded',
-            'weight_or_hour',
-            'truck_paid', 'total',
-            'trailer_rent', 'broker_charge', 'contractor_paid',
+            'weight_or_hour', 'truck_paid',
+            'total', 'contractor_paid',
+            'trailer_rent', 'broker_charge',
             'created_at',
         ]
-        read_only_fields = fields
+        read_only_fields = ['id', 'total', 'contractor_paid', 'created_at']
 
-
-class PayReportLineWriteSerializer(serializers.ModelSerializer):
-    """
-    Create/Update serializer for a line.
-    - job_number is required
-    - job FK is optional; we attempt to resolve it by job_number (lenient)
-    - date must be within the parent report week (validated in validate())
-    """
-    job_number = serializers.CharField()
-
-    class Meta:
-        model = PayReportLine
-        fields = [
-            'id', 'date', 'job_number',
-            'truck_number', 'trailer_number',
-            'loaded', 'unloaded',
-            'weight_or_hour',
-            'truck_paid', 'total',
-            'trailer_rent', 'broker_charge', 'contractor_paid',
-        ]
-        read_only_fields = ['id']
-
-    def validate(self, attrs):
-        report: PayReport = self.context['report']  # provided by the ViewSet action
-        date = attrs.get('date')
-        if date and (date < report.week_start or date > report.week_end):
-            raise serializers.ValidationError({'date': 'Date must be within the report week.'})
-        return attrs
-
-    def _resolve_job(self, job_number: str):
-        if not job_number:
-            return None
-        # lenient: first match; if you enforce uniqueness, switch to get()
-        return Job.objects.filter(job_number=job_number).first()
-
-    def create(self, validated):
-        report: PayReport = self.context['report']
-        job_number = validated.get('job_number', '').strip()
-        instance = PayReportLine.objects.create(
-            report=report,
-            job=self._resolve_job(job_number),
-            **validated
-        )
-        return instance
-
-    def update(self, instance, validated):
-        # if job_number provided, try to re-resolve the FK
-        if 'job_number' in validated:
-            job_number = (validated.get('job_number') or '').strip()
-            instance.job = self._resolve_job(job_number)
-        return super().update(instance, validated)
-
-
-# ---------- Reports (headers) ----------
-class PayReportListSerializer(serializers.ModelSerializer):
+class PayReportSerializer(serializers.ModelSerializer):
     driver_name = serializers.CharField(source='driver.name', read_only=True)
+    lines = PayReportLineSerializer(many=True, read_only=True)
 
     class Meta:
         model = PayReport
         fields = [
-            'id', 'week_start', 'week_end',
-            'driver', 'driver_name',
-            'total_weight_or_hours', 'total_truck_paid',
-            'total_amount', 'total_due',
+            'id', 'driver', 'driver_name',
+            'week_start', 'week_end',
             'fuel_program', 'fuel_pilot_or_kt', 'fuel_surcharge',
+            'total_weight_or_hours', 'total_truck_paid', 'total_amount', 'total_due',
             'created_at', 'updated_at',
+            'lines',
         ]
         read_only_fields = [
-            'total_weight_or_hours', 'total_truck_paid',
-            'total_amount', 'total_due',
-            'created_at', 'updated_at'
+            'id',
+            'total_weight_or_hours', 'total_truck_paid', 'total_amount', 'total_due',
+            'created_at', 'updated_at',
         ]
-
-
-class PayReportCreateSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = PayReport
-        fields = [
-            'id', 'driver', 'week_start', 'week_end',
-            'fuel_program', 'fuel_pilot_or_kt', 'fuel_surcharge',
-        ]
-        read_only_fields = ['id']
-
     def validate(self, attrs):
-        if attrs['week_start'] > attrs['week_end']:
-            raise serializers.ValidationError({'week_end': 'End date must be on or after start date.'})
-        return attrs
-
-    def create(self, validated):
-        # Optionally copy driver name snapshot here if you add such a field later
-        return super().create(validated)
-
-
-class PayReportUpdateSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = PayReport
-        fields = [
-            'week_start', 'week_end',
-            'driver',
-            'fuel_program', 'fuel_pilot_or_kt', 'fuel_surcharge',
-        ]
-
-    def validate(self, attrs):
-        # only validate dates if both provided in PATCH
-        start = attrs.get('week_start', getattr(self.instance, 'week_start', None))
-        end   = attrs.get('week_end',   getattr(self.instance, 'week_end', None))
-        if start and end and start > end:
-            raise serializers.ValidationError({'week_end': 'End date must be on or after start date.'})
-        return attrs
-
-
-class PayReportDetailSerializer(PayReportListSerializer):
-    lines = PayReportLineReadSerializer(many=True, read_only=True)
-
-    class Meta(PayReportListSerializer.Meta):
-        fields = PayReportListSerializer.Meta.fields + ['lines']
-
-class RequestOTPSerializer(serializers.Serializer):
-    email = serializers.EmailField()
-
-class VerifyOTPSerializer(serializers.Serializer):
-    email = serializers.EmailField()
-    code = serializers.RegexField(r"^\d{6}$")
-
-class ResetPasswordSerializer(serializers.Serializer):
-    email = serializers.EmailField()
-    code = serializers.RegexField(r"^\d{6}$")
-    new_password = serializers.CharField(min_length=8, write_only=True)
-
-
-
-
+            ws = attrs.get('week_start', getattr(self.instance, 'week_start', None))
+            we = attrs.get('week_end',   getattr(self.instance, 'week_end',   None))
+            if ws and we and we < ws:
+                raise serializers.ValidationError({"week_end": "must be on/after week_start"})
+            return attrs

@@ -3,7 +3,10 @@ from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, Permis
 from django.contrib.postgres.fields import ArrayField, JSONField
 from django.db.models import JSONField
 from django.contrib.auth.models import User
-
+from decimal import Decimal
+from django.utils import timezone
+from django.db.models.signals import post_save, post_delete
+from django.dispatch import receiver
 
 user = models.ForeignKey(User, on_delete=models.CASCADE)
 
@@ -303,59 +306,58 @@ class Comment(models.Model):
 #         ).exclude(id=self.id)
 #         if conflict.exists():
 #             raise ValidationError("Truck is already assigned to another driver.")
-from django.db.models.signals import post_save, post_delete
-from django.dispatch import receiver
 
-@receiver(post_save, sender=PayReportLine)
-def _prl_after_save(sender, instance: PayReportLine, **kwargs):
-    instance.report.recalc_totals(save=True)
+class Invoice(models.Model):
+    STATUS_CHOICES = [
+        ('Draft', 'Draft'),
+        ('Sent', 'Sent'),
+        ('Paid', 'Paid'),
+        ('Overdue', 'Overdue'),
+        ('Void', 'Void'),
+    ]
 
-@receiver(post_delete, sender=PayReportLine)
-def _prl_after_delete(sender, instance: PayReportLine, **kwargs):
-    instance.report.recalc_totals(save=True)
-    # app/models.py
-import hashlib, secrets, string
-from django.conf import settings
-from django.db import models
-from django.utils import timezone
-from datetime import timedelta
+    customer   = models.ForeignKey('Customer', on_delete=models.PROTECT, related_name='invoices')
+    job        = models.ForeignKey('Job', on_delete=models.PROTECT, related_name='invoices')
+    invoice_no = models.CharField(max_length=32, unique=True, editable=False)
+    invoice_date = models.DateField(default=timezone.now)
+    status       = models.CharField(max_length=16, choices=STATUS_CHOICES, default='Draft')
+    total_amount = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0.00'))
 
-class PasswordOTP(models.Model):
-    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="password_otps")
-    code_hash = models.CharField(max_length=64, db_index=True)  # sha256 hex
-    salt = models.CharField(max_length=16)
-    created_at = models.DateTimeField(auto_now_add=True)
-    expires_at = models.DateTimeField()
-    attempts = models.PositiveSmallIntegerField(default=0)
-    used = models.BooleanField(default=False)
-    purpose = models.CharField(max_length=32, default="password_reset")
+    def __str__(self):
+        return self.invoice_no
 
-    class Meta:
-        indexes = [models.Index(fields=["user", "created_at"])]
+    def save(self, *args, **kwargs):
+        if not self.invoice_no:
+            prefix = timezone.now().strftime("INV-%Y-")
+            last = Invoice.objects.filter(invoice_no__startswith=prefix).order_by('-id').first()
+            n = int(last.invoice_no.split('-')[-1]) + 1 if last and last.invoice_no.split('-')[-1].isdigit() else 1
+            self.invoice_no = f"{prefix}{n:06d}"
+        super().save(*args, **kwargs)
 
-    @staticmethod
-    def _hash(code: str, salt: str) -> str:
-        return hashlib.sha256((salt + code).encode()).hexdigest()
+    def recalc_totals(self):
+        tot = self.lines.aggregate(models.Sum('line_total'))['line_total__sum'] or Decimal('0.00')
+        if tot != self.total_amount:
+            self.total_amount = tot
+            super().save(update_fields=['total_amount'])
 
-    @classmethod
-    def create_for_user(cls, user, ttl_minutes=10, length=6):
-        code = "".join(secrets.choice(string.digits) for _ in range(length))
-        salt = secrets.token_hex(4)
-        otp = cls.objects.create(
-            user=user,
-            code_hash=cls._hash(code, salt),
-            salt=salt,
-            expires_at=timezone.now() + timedelta(minutes=ttl_minutes),
-        )
-        return otp, code  # return plaintext once to email it
 
-    def verify(self, code: str, max_attempts=5) -> bool:
-        if self.used or timezone.now() > self.expires_at or self.attempts >= max_attempts:
-            return False
-        self.attempts += 1
-        ok = self.code_hash == self._hash(code, self.salt)
-        if ok:
-            self.used = True
-        self.save(update_fields=["attempts", "used"])
-        return ok
+class InvoiceLine(models.Model):
+    invoice     = models.ForeignKey(Invoice, on_delete=models.CASCADE, related_name='lines')
+    description = models.CharField(max_length=255, blank=True)
+    service_date = models.DateField(null=True, blank=True)
+    quantity    = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('1.00'))
+    unit_price  = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0.00'))
+    line_total  = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0.00'))
 
+    def __str__(self):
+        return f"{self.description} - {self.line_total}"
+
+    def save(self, *args, **kwargs):
+        self.line_total = (self.quantity or 0) * (self.unit_price or 0)
+        super().save(*args, **kwargs)
+
+
+@receiver(post_save, sender=InvoiceLine)
+@receiver(post_delete, sender=InvoiceLine)
+def _invoice_totals_sync(sender, instance, **kwargs):
+    instance.invoice.recalc_totals()

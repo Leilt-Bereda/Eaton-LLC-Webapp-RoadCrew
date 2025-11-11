@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Job, Customer, Driver, Role, User, UserRole, Comment, Truck, DriverTruckAssignment, Operator, Address, JobDriverAssignment,Invoice,InvoiceLine
+from .models import Job, Customer, Driver, Role, User, UserRole, Comment, Truck, DriverTruckAssignment, Operator, Address, JobDriverAssignment,Invoice,InvoiceLine,PayReport, PayReportLine
 from django.contrib.auth import get_user_model
 
 class AddressSerializer(serializers.ModelSerializer):
@@ -47,6 +47,13 @@ class JobDriverAssignmentSerializer(serializers.ModelSerializer):
         
 class JobSerializer(serializers.ModelSerializer):
     # Writeable FK fields:
+    prime_contractor_customer = serializers.PrimaryKeyRelatedField(
+        queryset=Customer.objects.all(), allow_null=True, required=False
+    )
+    prime_contractor_name = serializers.CharField(
+        source='prime_contractor_customer.company_name', read_only=True
+    )
+
     loading_address           = serializers.PrimaryKeyRelatedField(
                                     queryset=Address.objects.all()
                                 )
@@ -78,6 +85,8 @@ class JobSerializer(serializers.ModelSerializer):
         model = Job
         fields = [
             'id',
+            'prime_contractor_customer',
+            'prime_contractor_name',
             'project',
             'prime_contractor',
             'prime_contractor_project_number',
@@ -114,7 +123,7 @@ class JobSerializer(serializers.ModelSerializer):
             'driver_assignments',
             'created_at',
         ]
-        read_only_fields = ['created_at']
+        read_only_fields = ['created_at', 'prime_contractor_name']
 
 class CustomerSerializer(serializers.ModelSerializer):
     class Meta:
@@ -231,6 +240,7 @@ class InvoiceSerializer(serializers.ModelSerializer):
             setattr(instance, attr, val)
         instance.save()
         return instance
+
 class PayReportLineSerializer(serializers.ModelSerializer):
     class Meta:
         model = PayReportLine

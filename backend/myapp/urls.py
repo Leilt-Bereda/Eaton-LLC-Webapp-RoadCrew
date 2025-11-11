@@ -8,9 +8,8 @@ from . import views
 from .views import (
     JobViewSet, CustomerViewSet, DriverViewSet, RoleViewSet,
     UserViewSet, UserRoleViewSet, CommentViewSet, TruckViewSet,
-    DriverTruckAssignmentViewSet, RegisterView, CustomTokenObtainPairView, OperatorViewSet, AddressViewSet, JobDriverAssignmentViewSet,
-    CustomTokenRefreshView, protected_view, assign_truck_to_driver, unassigned_trucks,
-    PayReportViewSet, PayReportLineViewSet,
+    DriverTruckAssignmentViewSet, RegisterView, CustomTokenObtainPairView, OperatorViewSet, AddressViewSet, JobDriverAssignmentViewSet, InvoiceViewSet, InvoiceLineViewSet,
+    CustomTokenRefreshView, protected_view, assign_truck_to_driver, unassigned_trucks,PayReportViewSet, PayReportLineViewSet
 )
 
 router = DefaultRouter()

@@ -1,11 +1,12 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, ViewEncapsulation } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router } from '@angular/router';
-import { FormGroup, FormControl, FormArray, ReactiveFormsModule, FormsModule } from '@angular/forms';
+import { FormGroup, FormControl, FormArray, ReactiveFormsModule, FormsModule, FormBuilder, Validators } from '@angular/forms';
 import { CdkStepperModule } from '@angular/cdk/stepper';
 import { NgStepperModule } from 'angular-ng-stepper';
 import { AddressService } from 'src/app/services/address.service';
 import { JobService } from 'src/app/services/job.service';
+import Swal from 'sweetalert2';
 //import { tick } from '@angular/core/testing';
 //import { sign } from 'crypto';
 
@@ -14,22 +15,29 @@ import { JobService } from 'src/app/services/job.service';
   standalone: true,
   imports: [CommonModule, ReactiveFormsModule, FormsModule, CdkStepperModule, NgStepperModule],
   templateUrl: './create-job.component.html',
-  styleUrls: ['./create-job.component.scss']
+  styleUrls: ['./create-job.component.scss'],
+  encapsulation: ViewEncapsulation.None
 })
 
 
-export class CreateJobComponent implements OnInit {
+export class CreateJobComponent {
+  currentStep = 1;
+
+  showFormError: boolean = false;
+
 
   jobForm = new FormGroup({
+
+
     // Project Details
-    project: new FormControl(''),
-    primeContractor: new FormControl(''),
-    primeContractorProjectNumber: new FormControl(''),
-    contractorInvoice: new FormControl(''),
-    newContractorInvoice: new FormControl(''),
-    contractorInvoiceProjectNumber: new FormControl(''),
-    newContractorInvoiceProjectNumber: new FormControl(''),
-    prevailingOrNot: new FormControl(''),
+    project: new FormControl('', Validators.required),
+    primeContractor: new FormControl('', Validators.required),
+    primeContractorProjectNumber: new FormControl('', Validators.required),
+    contractorInvoice: new FormControl('', Validators.required),
+    newContractorInvoice: new FormControl('', Validators.required),
+    contractorInvoiceProjectNumber: new FormControl('', Validators.required),
+    newContractorInvoiceProjectNumber: new FormControl('', Validators.required),
+    prevailingOrNot: new FormControl('', Validators.required),
     sapOrSpNumber: new FormControl(''),
     reportRequirement: new FormControl(''),
     contractNumber: new FormControl(''),
@@ -45,7 +53,7 @@ export class CreateJobComponent implements OnInit {
     // Job Details
     jobDescription: new FormControl(''),
     jobNumber: new FormControl(''),
-    material: new FormControl(''),
+    material: new FormControl('', Validators.required),
     truckTypes: new FormArray([]),
     invoiceType: new FormControl(''),
     itoMtoRate: new FormControl(''),
@@ -129,9 +137,10 @@ export class CreateJobComponent implements OnInit {
     jobForemanName: new FormControl(''),
     jobForemanContact: new FormControl(''),
     additionalNotes: new FormControl('')
+
+  
   });
-  
-  
+
 
   isOtherContractor: boolean = false;
   isOtherContractorProjectNumber: boolean = false;
@@ -193,7 +202,7 @@ export class CreateJobComponent implements OnInit {
         .subscribe(addrs => this.unloadingAddressOptions = addrs);
   }
   
-  
+
 
   addLoadingAddress() {
     const latitude = this.jobForm.get('loadingLatitude')?.value;
@@ -460,7 +469,12 @@ export class CreateJobComponent implements OnInit {
 
   submitJob() {
     if (this.jobForm.invalid) {
-      alert('Please complete required fields.');
+      Swal.fire({
+      icon: 'error',
+      title: 'Incomplete Form',
+      text: 'Please complete all required fields before submitting.',
+      confirmButtonColor: '#3085d6'
+    });
       return;
     }
   
@@ -508,19 +522,48 @@ export class CreateJobComponent implements OnInit {
   
     this.jobService.createJob(payload).subscribe({
       next: (response) => {
-        console.log('Job created successfully!', response);
-        alert('Job created successfully!');
-        this.router.navigate(['/jobs']);
+        Swal.fire({
+          icon: 'success',
+          title: 'Success',
+          text: 'Job created successfully!',
+          confirmButtonColor: '#28a745'
+        }).then(() => {
+          this.router.navigate(['/jobs']);
+        }); 
       },
       error: (error) => {
         console.error('Failed to create job:', error);
-        alert('Failed to create job. Please check your input carefully.');
+        Swal.fire({
+          icon: 'error',
+          title: 'Job Creation Failed',
+          text: 'Please Check your input and try again.',
+          confirmButtonColor: '#d33'
+        });
       }
     });
   }
-  
-  
-  ngOnInit() {
-    this.fetchLoadingAddresses();
+
+  nextStep(stepper: any) {
+  // Validate only the required fields in the current step
+  const invalidFields = Object.keys(this.jobForm.controls).filter(
+    key => this.jobForm.get(key)?.invalid && this.jobForm.get(key)?.hasValidator(Validators.required)
+  );
+
+  if (invalidFields.length > 0) {
+    Swal.fire({
+      icon: 'error',
+      title: 'Missing Required Fields',
+      text: 'Please fill out all required fields before proceeding to the next step.',
+      confirmButtonColor: '#3085d6'
+    });
+    return;
   }
+
+  stepper.next();
+}
+
+    
+  /* ngOnInit() {
+    this.fetchLoadingAddresses();
+  }}  */
 }

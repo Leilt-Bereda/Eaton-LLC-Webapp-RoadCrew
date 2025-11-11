@@ -1,4 +1,5 @@
 from rest_framework import serializers
+from decimal import Decimal
 from .models import Job, Customer, Driver, Role, User, UserRole, Comment, Truck, DriverTruckAssignment, Operator, Address, JobDriverAssignment,Invoice,InvoiceLine,PayReport, PayReportLine
 from django.contrib.auth import get_user_model
 
@@ -182,7 +183,7 @@ class InvoiceLineSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = InvoiceLine
-        fields = ["id", "invoice", "description", "quantity", "unit_price", "amount"]
+        fields = ["id", "invoice", "description", "service_date", "quantity", "unit_price", "amount"]
         read_only_fields = ["id"]
 
     def get_amount(self, obj):
@@ -193,9 +194,14 @@ class InvoiceLineSerializer(serializers.ModelSerializer):
 
 
 class InvoiceSerializer(serializers.ModelSerializer):
-    customer_id = serializers.IntegerField()
-    job_id = serializers.IntegerField( allow_null=True, required=False)
+    # Writeable FK fields for POST/PATCH
+    customer_id = serializers.IntegerField(write_only=True)
+    job_id = serializers.IntegerField(allow_null=True, required=False, write_only=True)
     lines = InvoiceLineSerializer(many=True, required=False)
+    
+    # Nested read-only info for GET responses:
+    customer = CustomerSerializer(read_only=True)
+    job = JobSerializer(read_only=True)
 
     class Meta:
         model = Invoice
@@ -203,18 +209,73 @@ class InvoiceSerializer(serializers.ModelSerializer):
             "id",
             "invoice_no",
             "invoice_date",
+            "start_date",
+            "end_date",
             "status",
-            "total_amount",     # keep read-only if you compute it server-side
+            "total_amount",
             "customer_id",
             "job_id",
+            "customer",      # nested read-only
+            "job",           # nested read-only
             "lines",
         ]
-        read_only_fields = ["id", "total_amount"]
+        read_only_fields = ["id", "total_amount", "invoice_no"]
 
     def create(self, validated_data):
         # pop nested lines (coming from `source="lines"`)
         lines_data = validated_data.pop("lines", [])
-        invoice = Invoice.objects.create(**validated_data)
+        # Get customer and job objects for the invoice
+        customer_id = validated_data.pop("customer_id")
+        job_id = validated_data.pop("job_id", None)
+        start_date = validated_data.get("start_date")
+        end_date = validated_data.get("end_date")
+        
+        from .models import Customer, Job, JobDriverAssignment, InvoiceLine
+        customer = Customer.objects.get(id=customer_id)
+        # Job is required in the model, so we must have a job_id
+        if not job_id:
+            raise serializers.ValidationError({"job_id": "Job is required for creating an invoice."})
+        job = Job.objects.get(id=job_id)
+        invoice = Invoice.objects.create(customer=customer, job=job, **validated_data)
+
+        # If no lines provided and date range exists, auto-populate from job data within date range
+        if not lines_data and start_date and end_date:
+            from datetime import date as date_type
+            
+            # Check if job itself falls within the date range
+            if job.job_date and start_date <= job.job_date <= end_date:
+                # Create invoice line from job data
+                lines_data.append({
+                    'description': job.job_description or f"{job.project} - {job.job_number}",
+                    'service_date': job.job_date,
+                    'quantity': Decimal('1.00'),
+                    'unit_price': Decimal('0.00')  # Will need to be set manually or from job data
+                })
+            
+            # Filter job driver assignments that were performed within the date range
+            job_assignments = JobDriverAssignment.objects.filter(
+                job=job
+            ).select_related('driver_truck__driver', 'driver_truck__truck')
+            
+            # Create lines from job driver assignments that fall within the range
+            for assignment in job_assignments:
+                # Use assigned_at date as service date, or job_date if assigned_at is not available
+                if assignment.assigned_at:
+                    service_date = assignment.assigned_at.date()
+                else:
+                    service_date = job.job_date
+                
+                # Only include if service date falls within the invoice date range
+                if start_date <= service_date <= end_date:
+                    driver_name = assignment.driver_truck.driver.name if assignment.driver_truck.driver else "Unknown Driver"
+                    truck_number = assignment.driver_truck.truck.truck_number if assignment.driver_truck.truck else "Unknown Truck"
+                    
+                    lines_data.append({
+                        'description': f"{job.job_number} - {driver_name} - {truck_number}",
+                        'service_date': service_date,
+                        'quantity': Decimal('1.00'),  # Default quantity
+                        'unit_price': Decimal('0.00')  # Will need to be set manually
+                    })
 
         for line in lines_data:
             InvoiceLine.objects.create(invoice=invoice, **line)
@@ -231,14 +292,62 @@ class InvoiceSerializer(serializers.ModelSerializer):
         except Exception:
             pass
 
+        # Return the serialized invoice instance so nested customer and job data are included
+        # DRF will automatically serialize this using the InvoiceSerializer
         return invoice
 
     def update(self, instance, validated_data):
-        # Header-only updates (keep line editing for later)
-        validated_data.pop("lines", None)
+        # Handle line updates
+        lines_data = validated_data.pop("lines", None)
+        
+        # Update header fields
         for attr, val in validated_data.items():
             setattr(instance, attr, val)
         instance.save()
+        
+        # Update lines if provided
+        if lines_data is not None:
+            # Get existing line IDs that should be kept
+            existing_line_ids = {line.id for line in instance.lines.all()}
+            incoming_line_ids = {line.get('id') for line in lines_data if line.get('id') and isinstance(line.get('id'), int)}
+            
+            # Delete lines that are not in the incoming data
+            if incoming_line_ids:
+                instance.lines.exclude(id__in=incoming_line_ids).delete()
+            else:
+                # If no valid IDs, delete all existing lines (full replace)
+                instance.lines.all().delete()
+            
+            # Update or create lines
+            for line_data in lines_data:
+                line_id = line_data.pop('id', None)
+                # Only update if ID exists and is a valid integer in the database
+                if line_id and isinstance(line_id, int) and line_id in existing_line_ids:
+                    try:
+                        # Update existing line
+                        line = instance.lines.get(id=line_id)
+                        for attr, val in line_data.items():
+                            setattr(line, attr, val)
+                        line.save()
+                    except InvoiceLine.DoesNotExist:
+                        # ID doesn't exist, create new line
+                        InvoiceLine.objects.create(invoice=instance, **line_data)
+                else:
+                    # Create new line (no ID or invalid ID)
+                    InvoiceLine.objects.create(invoice=instance, **line_data)
+            
+            # Recalculate totals
+            try:
+                total = 0
+                for l in instance.lines.all():
+                    qty = l.quantity or 0
+                    price = l.unit_price or 0
+                    total += float(qty) * float(price)
+                instance.total_amount = total
+                instance.save(update_fields=["total_amount"])
+            except Exception:
+                pass
+        
         return instance
 
 class PayReportLineSerializer(serializers.ModelSerializer):

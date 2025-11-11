@@ -3,6 +3,8 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterModule } from '@angular/router';
 import { SharedModule } from 'src/app/theme/shared/shared.module';
+import { InvoiceService, Invoice, InvoiceLineItem as ApiInvoiceLineItem } from 'src/app/services/invoice.service';
+import { catchError, of } from 'rxjs';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 
@@ -45,49 +47,18 @@ export class InvoiceDetailComponent implements OnInit {
   
   private route = inject(ActivatedRoute);
   private router = inject(Router);
+  private invoiceService = inject(InvoiceService);
 
   invoiceId: number | null = null;
   invoice: InvoiceDetail | null = null;
   isEditing = false;
   editingLineItem: InvoiceLineItem | null = null;
+  loading = false;
+  error: string | null = null;
 
-  // Mock data - replace with actual service call
-  private mockInvoice: InvoiceDetail = {
-    id: 1,
-    invoiceNo: 'INV-000123',
-    invoiceDate: '2025-09-02',
-    dueDate: '2025-09-22',
-    customerName: 'Rochester Sand & Gravel',
-    customerAddress: '4105 East River Road NE, Rochester MN 55906',
-    companyName: 'M Eaton Trucking LLC',
-    companyAddress: '15790 320th Ave, Waseca, MN 56093',
-    lineItems: [
-      {
-        id: 1,
-        date: '2025-08-28',
-        truck: 'Dump Truck I...',
-        bolScaleTicket: '7 Jireh 7',
-        description: '4952467-19 Dodge Center',
-        weightTime: 10.5,
-        rate: 114.00,
-        amount: 1197.00
-      },
-      {
-        id: 2,
-        date: '2025-08-29',
-        truck: 'Dump Truck I...',
-        bolScaleTicket: '7 Jireh 7',
-        description: '4952467-19 Dodge Center',
-        weightTime: 6.5,
-        rate: 114.00,
-        amount: 741.00
-      }
-    ],
-    subtotal: 1938.00,
-    tax: 0,
-    total: 1938.00,
-    status: 'Sent'
-  };
+  // Company info (could be moved to a config or service)
+  companyName = 'M Eaton Trucking LLC';
+  companyAddress = '15790 320th Ave, Waseca, MN 56093';
 
   ngOnInit(): void {
     const idParam = this.route.snapshot.paramMap.get('id');
@@ -99,8 +70,69 @@ export class InvoiceDetailComponent implements OnInit {
   }
 
   loadInvoice(id: number): void {
-    // TODO: Replace with actual service call
-    this.invoice = { ...this.mockInvoice, id };
+    this.loading = true;
+    this.error = null;
+    
+    this.invoiceService.getInvoiceById(id)
+      .pipe(
+        catchError(err => {
+          this.error = 'Failed to load invoice. Please try again.';
+          this.loading = false;
+          console.error('Error loading invoice:', err);
+          return of(null);
+        })
+      )
+      .subscribe(apiInvoice => {
+        if (apiInvoice) {
+          this.invoice = this.mapApiInvoiceToDetail(apiInvoice);
+        }
+        this.loading = false;
+      });
+  }
+
+  // Map API invoice response to InvoiceDetail format
+  private mapApiInvoiceToDetail(apiInvoice: Invoice): InvoiceDetail {
+    const customerName = apiInvoice.customer?.company_name || apiInvoice.customer?.name || '';
+    const customerAddress = apiInvoice.customer?.address || '';
+    
+    // Map line items - use InvoiceLine data from database (service_date, quantity, unit_price)
+    // Display using InvoiceLineItem format (date, description, weightTime, rate)
+    const lineItems: InvoiceLineItem[] = (apiInvoice.lines || []).map((line, idx) => ({
+      id: line.id || idx + 1,
+      date: line.service_date || apiInvoice.invoice_date || '', // Use service_date from InvoiceLine, fallback to invoice_date
+      truck: '', // Not stored in backend model currently
+      bolScaleTicket: '', // Not stored in backend model currently
+      description: line.description || '',
+      weightTime: line.quantity || 0,
+      rate: line.unit_price || 0,
+      amount: line.amount || (line.quantity || 0) * (line.unit_price || 0)
+    }));
+
+    // Calculate due date (typically 30 days from invoice date)
+    const dueDate = this.calculateDueDate(apiInvoice.invoice_date);
+
+    return {
+      id: apiInvoice.id!,
+      invoiceNo: apiInvoice.invoice_no || '',
+      invoiceDate: apiInvoice.invoice_date,
+      dueDate: dueDate,
+      customerName: customerName,
+      customerAddress: customerAddress,
+      companyName: this.companyName,
+      companyAddress: this.companyAddress,
+      lineItems: lineItems,
+      subtotal: apiInvoice.total_amount || 0,
+      tax: 0, // Tax not stored in backend currently
+      total: apiInvoice.total_amount || 0,
+      status: apiInvoice.status
+    };
+  }
+
+  // Calculate due date (30 days from invoice date)
+  private calculateDueDate(invoiceDate: string): string {
+    const date = new Date(invoiceDate);
+    date.setDate(date.getDate() + 30);
+    return date.toISOString().split('T')[0];
   }
 
   goBack(): void {
@@ -116,19 +148,23 @@ export class InvoiceDetailComponent implements OnInit {
   }
 
   saveLineItem(): void {
-    if (!this.editingLineItem || !this.invoice) return;
+    if (!this.editingLineItem || !this.invoice || !this.invoiceId) return;
     
-    const index = this.invoice.lineItems.findIndex(item => item.id === this.editingLineItem!.id);
-    if (index !== -1) {
+    // Find the corresponding API line item if it exists
+    const existingLineIndex = this.invoice.lineItems.findIndex(item => item.id === this.editingLineItem!.id);
+    if (existingLineIndex !== -1) {
       // Auto-calculate amount when weight/time or rate changes
       this.editingLineItem.amount = this.editingLineItem.weightTime * this.editingLineItem.rate;
       
-      this.invoice.lineItems[index] = { ...this.editingLineItem };
+      // Update local copy immediately for UI responsiveness
+      this.invoice.lineItems[existingLineIndex] = { ...this.editingLineItem };
       this.recalculateTotals();
+      
+      // Save to backend - need to update the invoice with new line items
+      this.saveInvoiceToBackend();
     }
     
     this.editingLineItem = null;
-    // TODO: Save to backend
   }
 
   cancelEditLineItem(): void {
@@ -136,12 +172,15 @@ export class InvoiceDetailComponent implements OnInit {
   }
 
   deleteLineItem(lineItem: InvoiceLineItem): void {
-    if (!this.invoice) return;
+    if (!this.invoice || !this.invoiceId) return;
     
     if (confirm('Are you sure you want to delete this line item?')) {
+      // Update local copy
       this.invoice.lineItems = this.invoice.lineItems.filter(item => item.id !== lineItem.id);
       this.recalculateTotals();
-      // TODO: Delete from backend
+      
+      // Save to backend
+      this.saveInvoiceToBackend();
     }
   }
 
@@ -161,6 +200,46 @@ export class InvoiceDetailComponent implements OnInit {
     
     this.invoice.lineItems.push(newLineItem);
     this.editLineItem(newLineItem);
+  }
+
+  // Save invoice with line items to backend
+  private saveInvoiceToBackend(): void {
+    if (!this.invoice || !this.invoiceId) return;
+    
+    this.loading = true;
+    this.error = null;
+    
+    // Map line items back to API format (InvoiceLine format)
+    // Backend will handle creating new lines for items without valid database IDs
+    const apiLines: ApiInvoiceLineItem[] = this.invoice.lineItems.map(item => ({
+      id: item.id, // Backend will check if ID exists in database
+      description: item.description,
+      service_date: item.date || null, // Map date back to service_date for InvoiceLine
+      quantity: item.weightTime,
+      unit_price: item.rate,
+      amount: item.amount
+    }));
+
+    // Update invoice with new line items
+    this.invoiceService.updateInvoice(this.invoiceId, {
+      lines: apiLines,
+      total_amount: this.invoice.total
+    } as any)
+      .pipe(
+        catchError(err => {
+          this.error = 'Failed to save invoice changes. Please try again.';
+          this.loading = false;
+          console.error('Error saving invoice:', err);
+          return of(null);
+        })
+      )
+      .subscribe(invoice => {
+        if (invoice) {
+          // Reload to get the latest data
+          this.loadInvoice(this.invoiceId!);
+        }
+        this.loading = false;
+      });
   }
 
   private recalculateTotals(): void {
@@ -277,11 +356,45 @@ export class InvoiceDetailComponent implements OnInit {
   }
 
   saveInvoice(): void {
-    if (!this.invoice) return;
+    if (!this.invoice || !this.invoiceId) return;
     
-    // TODO: Save to backend
-    console.log('Saving invoice:', this.invoice);
-    this.isEditing = false;
+    this.loading = true;
+    this.error = null;
+    
+    // Map line items back to API format (InvoiceLine format)
+    // Backend will handle creating new lines for items without valid database IDs
+    const apiLines: ApiInvoiceLineItem[] = this.invoice.lineItems.map(item => ({
+      id: item.id, // Backend will check if ID exists in database
+      description: item.description,
+      service_date: item.date || null, // Map date back to service_date for InvoiceLine
+      quantity: item.weightTime,
+      unit_price: item.rate,
+      amount: item.amount
+    }));
+
+    // Update invoice
+    this.invoiceService.updateInvoice(this.invoiceId, {
+      invoice_date: this.invoice.invoiceDate,
+      status: this.invoice.status,
+      lines: apiLines,
+      total_amount: this.invoice.total
+    } as any)
+      .pipe(
+        catchError(err => {
+          this.error = 'Failed to save invoice. Please try again.';
+          this.loading = false;
+          console.error('Error saving invoice:', err);
+          return of(null);
+        })
+      )
+      .subscribe(invoice => {
+        if (invoice) {
+          // Reload to get the latest data
+          this.loadInvoice(this.invoiceId!);
+          this.isEditing = false;
+        }
+        this.loading = false;
+      });
   }
 
   trackByLineItemId(index: number, item: InvoiceLineItem): number {

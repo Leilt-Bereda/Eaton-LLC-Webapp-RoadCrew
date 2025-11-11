@@ -1,23 +1,24 @@
-// src/app/pages/invoices/invoices.component.spec.ts
+// Basic unit test to ensure the component instantiates
+
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { RouterTestingModule } from '@angular/router/testing';
 import { InvoicesReportComponent } from './invoices-report.component';
 
 describe('InvoicesReportComponent', () => {
-  let component: InvoicesReportComponent;
-  let fixture: ComponentFixture<InvoicesReportComponent>;
+  let component: InvoicesReportComponent;      // component under test
+  let fixture: ComponentFixture<InvoicesReportComponent>; // test host
 
   beforeEach(async () => {
     await TestBed.configureTestingModule({
-      imports: [RouterTestingModule, InvoicesReportComponent]
+      imports: [RouterTestingModule, InvoicesReportComponent] // provide router stubs + component
     }).compileComponents();
 
-    fixture = TestBed.createComponent(InvoicesReportComponent);
-    component = fixture.componentInstance;
-    fixture.detectChanges();
+    fixture = TestBed.createComponent(InvoicesReportComponent); // create
+    component = fixture.componentInstance;                      // get instance
+    fixture.detectChanges();                                    // initial render
   });
 
   it('should create', () => {
-    expect(component).toBeTruthy();
+    expect(component).toBeTruthy(); // sanity check
   });
 });

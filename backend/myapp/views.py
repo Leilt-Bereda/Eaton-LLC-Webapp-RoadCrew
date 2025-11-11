@@ -52,7 +52,8 @@ class JobViewSet(viewsets.ModelViewSet):
         if date:
             qs = qs.filter(job_date=date)
         if customer_id:
-            qs = qs.filter(prime_contractor_customer_id=customer_id) # adjust if your FK path differs
+            # Filter jobs by customer through invoices (since Invoice has both customer and job FKs)
+            qs = qs.filter(invoices__customer_id=customer_id).distinct()
         if q:
             qs = qs.filter(
                 models.Q(job_number__icontains=q) |

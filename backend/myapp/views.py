@@ -1,3 +1,8 @@
+from django.utils import timezone
+from datetime import timedelta
+from django.db.models import Q, Prefetch
+from django.utils.dateparse import parse_date
+from decimal import Decimal
 from django.http import HttpResponse
 from rest_framework import viewsets, generics, permissions, status
 from rest_framework.decorators import api_view
@@ -10,6 +15,10 @@ from django.utils.dateparse import parse_date
 from datetime import timedelta
 from decimal import Decimal
 from django.utils import timezone
+from .emails import send_password_otp_email
+from django.contrib.auth import get_user_model
+from .serializers import RequestOTPSerializer, VerifyOTPSerializer, ResetPasswordSerializer
+from .models import PasswordOTP
 
 
 
@@ -45,30 +54,19 @@ class JobViewSet(viewsets.ModelViewSet):
         'backhaul_loading_address',
         'backhaul_unloading_address',
     )
-   
+
     def get_queryset(self):
         qs = self.queryset
         date = self.request.query_params.get('date')
+        customer_id = self.request.query_params.get('customer_id')
+        q = self.request.query_params.get('q')
         if date:
             qs = qs.filter(job_date=date)
         if customer_id:
-            # Filter jobs by customer through invoices (since Invoice has both customer and job FKs)
-            qs = qs.filter(invoices__customer_id=customer_id).distinct()
+            qs = qs.filter(prime_contractor_customer_id=customer_id) # adjust if your FK path differs
         if q:
-            qs = qs.filter(
-                models.Q(job_number__icontains=q) |
-                models.Q(project__icontains=q) |
-                models.Q(material__icontains=q)
-            )
+            qs = qs.filter(Q(job_number__icontains=q) | Q(project__icontains=q))
         return qs
-
-
-    @action(detail=False, methods=['get'], url_path=r'by-number/(?P<job_number>[^/]+)')
-    def by_number(self, request, job_number=None):
-        job = self.get_queryset().filter(job_number=job_number).first()
-        if not job:
-            return Response({'detail': 'Job not found.'}, status=status.HTTP_404_NOT_FOUND)
-        return Response(JobSerializer(job).data)
 
 class JobDriverAssignmentViewSet(viewsets.ModelViewSet):
     queryset         = JobDriverAssignment.objects.select_related(
@@ -131,117 +129,6 @@ class CustomTokenObtainPairView(TokenObtainPairView):
 
 class CustomTokenRefreshView(TokenRefreshView):
     pass
-# views.py
-from rest_framework import viewsets, status, permissions
-from rest_framework.response import Response
-from rest_framework.decorators import action
-from django.db.models import Prefetch
-
-from .models import PayReport, PayReportLine, Job
-from .serializers import (
-    PayReportListSerializer, PayReportCreateSerializer, PayReportDetailSerializer, PayReportUpdateSerializer,
-    PayReportLineReadSerializer, PayReportLineWriteSerializer,
-    JobSerializer,  # you already have this
-)
-
-class PayReportViewSet(viewsets.ModelViewSet):
-    """
-    /api/pay-reports
-      - GET    (list headers, with filters)
-      - POST   (create header)
-    /api/pay-reports/{id}
-      - GET    (detail with lines)
-      - PATCH  (update header)
-      - DELETE (delete header + lines)
-    Custom:
-    /api/pay-reports/{id}/lines          [POST]   create a line
-    /api/pay-reports/{id}/lines/{lineId} [PATCH]  update one line
-    /api/pay-reports/{id}/lines/{lineId} [DELETE] delete one line
-    """
-    permission_classes = [permissions.IsAuthenticated]
-    queryset = PayReport.objects.select_related('driver').prefetch_related('lines')
-
-    def get_queryset(self):
-        qs = super().get_queryset()
-        driver = self.request.query_params.get('driver')  # id
-        date_from = self.request.query_params.get('from')
-        date_to   = self.request.query_params.get('to')
-
-        if driver:
-            qs = qs.filter(driver_id=driver)
-        if date_from:
-            qs = qs.filter(week_end__gte=date_from)
-        if date_to:
-            qs = qs.filter(week_start__lte=date_to)
-        return qs
-
-    def get_serializer_class(self):
-        if self.action == 'list':
-            return PayReportListSerializer
-        if self.action == 'retrieve':
-            return PayReportDetailSerializer
-        if self.action == 'create':
-            return PayReportCreateSerializer
-        if self.action in ['partial_update', 'update']:
-            return PayReportUpdateSerializer
-        return PayReportListSerializer
-
-    # ----- Lines: create -----
-    @action(detail=True, methods=['post'], url_path='lines')
-    def create_line(self, request, pk=None):
-        report = self.get_object()
-        ser = PayReportLineWriteSerializer(data=request.data, context={'report': report})
-        ser.is_valid(raise_exception=True)
-        line = ser.save()
-        return Response(PayReportLineReadSerializer(line).data, status=status.HTTP_201_CREATED)
-
-    # ----- Lines: update -----
-    @action(detail=True, methods=['patch'], url_path=r'lines/(?P<line_id>[^/.]+)')
-    def update_line(self, request, pk=None, line_id=None):
-        report = self.get_object()
-        try:
-            line = report.lines.get(pk=line_id)
-        except PayReportLine.DoesNotExist:
-            return Response({'detail': 'Line not found.'}, status=status.HTTP_404_NOT_FOUND)
-
-        ser = PayReportLineWriteSerializer(line, data=request.data, partial=True, context={'report': report})
-        ser.is_valid(raise_exception=True)
-        line = ser.save()
-        return Response(PayReportLineReadSerializer(line).data)
-
-    # ----- Lines: delete -----
-    @action(detail=True, methods=['delete'], url_path=r'lines/(?P<line_id>[^/.]+)')
-    def delete_line(self, request, pk=None, line_id=None):
-        report = self.get_object()
-        deleted, _ = report.lines.filter(pk=line_id).delete()
-        if not deleted:
-            return Response({'detail': 'Line not found.'}, status=status.HTTP_404_NOT_FOUND)
-        return Response(status=status.HTTP_204_NO_CONTENT)
-
-
-class PayReportLineViewSet(viewsets.ModelViewSet):
-    """
-    Top-level CRUD for pay report lines:
-      GET    /api/pay-report-lines?report={id}
-      POST   /api/pay-report-lines
-      GET    /api/pay-report-lines/{id}
-      PATCH  /api/pay-report-lines/{id}
-      DELETE /api/pay-report-lines/{id}
-    """
-    permission_classes = [permissions.IsAuthenticated]
-    queryset = PayReportLine.objects.select_related('report').all()
-
-    def get_queryset(self):
-        qs = super().get_queryset()
-        report_id = self.request.query_params.get('report')
-        if report_id:
-            qs = qs.filter(report_id=report_id)
-        return qs
-
-    def get_serializer_class(self):
-        if self.action in ['create', 'update', 'partial_update']:
-            return PayReportLineWriteSerializer
-        return PayReportLineReadSerializer
 
 # Protected test endpoint
 @api_view(["GET"])
@@ -459,18 +346,6 @@ class PayReportLineViewSet(viewsets.ModelViewSet):
     def perform_update(self, serializer):
         line = serializer.save()  # model.save() recomputes totals
         line.report.recalc_from_lines()
-
-
-from rest_framework import permissions, viewsets
-from rest_framework.decorators import action
-from rest_framework.response import Response
-from django.contrib.auth import get_user_model
-from .serializers import RequestOTPSerializer, VerifyOTPSerializer, ResetPasswordSerializer
-from .models import PasswordOTP
-from .emails import send_password_otp_email
-from django.utils import timezone
-from datetime import timedelta
-
 User = get_user_model()
 
 def _recent_otp_count(user, minutes=15):

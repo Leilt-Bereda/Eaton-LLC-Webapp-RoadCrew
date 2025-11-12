@@ -389,3 +389,14 @@ class PayReportSerializer(serializers.ModelSerializer):
             if ws and we and we < ws:
                 raise serializers.ValidationError({"week_end": "must be on/after week_start"})
             return attrs
+class RequestOTPSerializer(serializers.Serializer):
+    email = serializers.EmailField()
+
+class VerifyOTPSerializer(serializers.Serializer):
+    email = serializers.EmailField()
+    code = serializers.RegexField(r"^\d{6}$")
+
+class ResetPasswordSerializer(serializers.Serializer):
+    email = serializers.EmailField()
+    code = serializers.RegexField(r"^\d{6}$")
+    new_password = serializers.CharField(min_length=8, write_only=True)

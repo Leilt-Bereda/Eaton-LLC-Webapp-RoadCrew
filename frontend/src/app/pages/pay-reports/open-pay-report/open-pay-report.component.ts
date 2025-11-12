@@ -3,7 +3,6 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, RouterModule } from '@angular/router';
 import { PayReport, PayReportLine } from 'src/app/models/pay-report.model';
-import { PAY_REPORTS_MOCK } from './mock-pay-reports';
 import { PayReportsService } from '../../../services/pay-reports.service';
 import { AddLineModalComponent } from '../add-line/add-line-modal.component';
 
@@ -41,27 +40,21 @@ export class OpenPayReportComponent implements OnInit {
         this.report = r as any;
       },
       error: () => {
-    const mock = PAY_REPORTS_MOCK[this.id];
-    if (mock) {
-          this.report = { ...mock } as any;
-    } else {
-          // Initialize from query params
-          this.report = {
-            id: this.id,
-            driverId: 0,
-            driverName: qp.get('driver') ?? 'Driver',
-            weekStart: qp.get('from') ?? '',
-            weekEnd: qp.get('to') ?? '',
-            lines: [],
-            totalWeightOrHours: 0,
-            totalTruckPaid: 0,
-            totalAmount: 0,
-            totalDue: 0,
-            fuelProgram: 0,
-            fuelPilotOrKT: 0,
-            fuelSurcharge: 0
-          } as any;
-        }
+        this.report = {
+          id: this.id,
+          driverId: 0,
+          driverName: qp.get('driver') ?? 'Driver',
+          weekStart: qp.get('from') ?? '',
+          weekEnd: qp.get('to') ?? '',
+          lines: [],
+          totalWeightOrHours: 0,
+          totalTruckPaid: 0,
+          totalAmount: 0,
+          totalDue: 0,
+          fuelProgram: 0,
+          fuelPilotOrKT: 0,
+          fuelSurcharge: 0
+        } as any;
       }
     });
     if (qp.get('add') === '1') setTimeout(() => this.openAddModal(), 0);

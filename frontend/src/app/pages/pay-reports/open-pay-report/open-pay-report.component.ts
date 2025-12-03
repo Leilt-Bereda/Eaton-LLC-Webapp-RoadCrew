@@ -2,8 +2,9 @@ import { Component, OnInit, ViewChild, ElementRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, RouterModule } from '@angular/router';
+
 import { PayReport, PayReportLine } from 'src/app/models/pay-report.model';
-import { PayReportsService } from '../../../services/pay-reports.service';
+import { PayReportsService } from 'src/app/services/pay-reports.service';
 import { AddLineModalComponent } from '../add-line/add-line-modal.component';
 
 type NumericLineKeys =
@@ -26,6 +27,14 @@ export class OpenPayReportComponent implements OnInit {
 
   id!: number;
   report!: PayReport;
+
+  // UI state
+  loading = false;
+  loadingLines = false;
+  savingHeader = false;
+  errorMsg = '';
+
+  // modal + inline edit
   addOpen = false;
   isEditing = false;
   editingLine: PayReportLine | null = null;
@@ -35,75 +44,98 @@ export class OpenPayReportComponent implements OnInit {
   ngOnInit(): void {
     this.id = Number(this.route.snapshot.paramMap.get('id'));
     const qp = this.route.snapshot.queryParamMap;
-    this.svc.getReport(this.id).subscribe({
-      next: (r) => {
-        this.report = r as any;
-      },
-      error: () => {
-        this.report = {
-          id: this.id,
-          driverId: 0,
-          driverName: qp.get('driver') ?? 'Driver',
-          weekStart: qp.get('from') ?? '',
-          weekEnd: qp.get('to') ?? '',
-          lines: [],
-          totalWeightOrHours: 0,
-          totalTruckPaid: 0,
-          totalAmount: 0,
-          totalDue: 0,
-          fuelProgram: 0,
-          fuelPilotOrKT: 0,
-          fuelSurcharge: 0
-        } as any;
+
+    this.fetchReport(() => {
+      if (qp.get('add') === '1') {
+        // open after the first change detection so the dialog sees inputs
+        setTimeout(() => this.openAddModal(), 0);
       }
     });
-    if (qp.get('add') === '1') setTimeout(() => this.openAddModal(), 0);
-  }
-  openAddModal() { this.addOpen = true; }
-  onModalClosed() { this.addOpen = false; }
-  onLineCreated(line: PayReportLine) {
-    this.report.lines.push(line);
-    // Recompute rollups
-    const sum = (k: keyof PayReportLine) => this.report.lines.reduce((s, l) => s + (Number(l[k]) || 0), 0);
-    this.report.totalWeightOrHours = sum('weightOrHour');
-    this.report.totalTruckPaid = sum('truckPaid');
-    this.report.totalAmount = sum('total');
-    this.report.totalDue = this.report.totalAmount
-      + (this.report.fuelProgram ?? 0)
-      + (this.report.fuelPilotOrKT ?? 0)
-      + (this.report.fuelSurcharge ?? 0);
-
-      this.addOpen = false;
   }
 
-  toggleEdit(): void { 
+  // ------------------ Data loading ------------------
+
+  private fetchReport(after?: () => void): void {
+    this.loading = true;
+    this.errorMsg = '';
+
+    this.svc.getReport(this.id).subscribe({
+      next: (r) => {
+        this.report = r as PayReport;
+        this.loading = false;
+        this.fetchLines();
+        if (after) after();
+      },
+      error: (err) => {
+        this.loading = false;
+        this.errorMsg = err?.error?.detail || 'Unable to load pay report.';
+      }
+    });
+  }
+
+  private fetchLines(): void {
+    this.loadingLines = true;
+    this.svc.listLines(this.id).subscribe({
+      next: (lines) => {
+        // some backends return null; normalize
+        this.report.lines = (lines || []) as PayReportLine[];
+        this.recalculateTotals(); // keep header totals consistent with lines
+        this.loadingLines = false;
+      },
+      error: () => {
+        this.report.lines = [];
+        this.loadingLines = false;
+      }
+    });
+  }
+
+  // ------------------ Modal open/close ------------------
+
+  openAddModal(): void { this.addOpen = true; }
+  onModalClosed(): void { this.addOpen = false; }
+
+  // When AddLineModal emits a created line
+  onLineCreated(line: PayReportLine): void {
+    if (!this.report) return;
+    this.report.lines = [...(this.report.lines || []), line];
+    this.recalculateTotals();
+    this.addOpen = false;
+  }
+
+  // ------------------ Inline edit ops ------------------
+
+  toggleEdit(): void {
     this.isEditing = !this.isEditing;
     if (!this.isEditing) this.editingLine = null;
   }
-  saveReport(): void { 
-    // TODO: Save to backend
-    this.isEditing = false;
-  }
 
   editLineItem(line: PayReportLine): void {
+    this.isEditing = true;
     this.editingLine = { ...line };
   }
 
   saveLineItem(): void {
     if (!this.editingLine || !this.report) return;
-    const index = this.report.lines.findIndex(item => item.id === this.editingLine!.id);
-    if (index !== -1) {
-      // Auto-calculate total
-      this.editingLine.total = (Number(this.editingLine.weightOrHour) || 0) * (Number(this.editingLine.truckPaid) || 0);
-      this.report.lines[index] = { ...this.editingLine };
+
+    // auto-calc the row total
+    const w = Number(this.editingLine.weightOrHour) || 0;
+    const p = Number(this.editingLine.truckPaid) || 0;
+    this.editingLine.total = w * p;
+
+    // optimistic update UI
+    const idx = this.report.lines.findIndex(l => l.id === this.editingLine!.id);
+    if (idx !== -1) {
+      this.report.lines[idx] = { ...this.editingLine };
       this.recalculateTotals();
-      // TODO: Save to backend via updateLineTop
-      if (this.editingLine.id) {
-        this.svc.updateLineTop(this.editingLine.id, this.editingLine).subscribe({
-          error: () => console.error('Failed to update line')
-        });
-      }
     }
+
+    // persist
+    if (this.editingLine.id) {
+      this.svc.updateLineTop(this.editingLine.id, this.editingLine).subscribe({
+        error: () => console.error('[OpenPayReport] failed to update line')
+      });
+    }
+
     this.editingLine = null;
   }
 
@@ -112,48 +144,57 @@ export class OpenPayReportComponent implements OnInit {
   }
 
   deleteLineItem(line: PayReportLine): void {
-    if (!this.report) return;
-    if (confirm('Are you sure you want to delete this line item?')) {
-      this.report.lines = this.report.lines.filter(item => item.id !== line.id);
-      this.recalculateTotals();
-      // TODO: Delete from backend
-      if (line.id) {
-        this.svc.deleteLineTop(line.id).subscribe({
-          error: () => console.error('Failed to delete line')
-        });
-      }
-    }
+    if (!this.report || !line?.id) return;
+    if (!confirm('Are you sure you want to delete this line item?')) return;
+
+    // optimistic remove
+    this.report.lines = (this.report.lines || []).filter(l => l.id !== line.id);
+    this.recalculateTotals();
+
+    this.svc.deleteLineTop(line.id).subscribe({
+      error: () => console.error('[OpenPayReport] failed to delete line')
+    });
   }
+
+  // ------------------ Header save (future) ------------------
+
+  saveReport(): void {
+    // If/when you add PATCH for header: set saving flag, call svc, then clear/edit off.
+    // this.savingHeader = true;
+    // this.svc.updateHeader(this.id, { ...fields }).pipe(finalize(() => this.savingHeader = false)).subscribe(...)
+    this.isEditing = false;
+  }
+
+  // ------------------ Totals ------------------
 
   private recalculateTotals(): void {
     if (!this.report) return;
-    const sum = (k: keyof PayReportLine) => this.report.lines.reduce((s, l) => s + (Number(l[k]) || 0), 0);
+
+    const sum = (key: keyof PayReportLine) =>
+      (this.report.lines || []).reduce((s, l) => s + (Number(l[key]) || 0), 0);
+
     this.report.totalWeightOrHours = sum('weightOrHour');
-    this.report.totalTruckPaid = sum('truckPaid');
-    this.report.totalAmount = sum('total');
-    this.report.totalDue = this.report.totalAmount
-      + (this.report.fuelProgram ?? 0)
-      + (this.report.fuelPilotOrKT ?? 0)
-      + (this.report.fuelSurcharge ?? 0);
+    this.report.totalTruckPaid     = sum('truckPaid');   // note: backend stores max, UI uses sum for quick view
+    this.report.totalAmount        = sum('total');
+
+    // Match backend calculation:
+    // total_due = total_amount - fuel_program - fuel_pilot_or_kt + fuel_surcharge
+    const fp  = Number(this.report.fuelProgram)   || 0;
+    const fpk = Number(this.report.fuelPilotOrKT) || 0;
+    const fs  = Number(this.report.fuelSurcharge) || 0;
+
+    this.report.totalDue = this.report.totalAmount - fp - fpk + fs;
   }
 
-  // ------- trackBy used in template -------
-  trackByLineId = (index: number, line: PayReportLine) => line.id ?? index;
-
-  // ------- sums / totals -------
   sum = (key: NumericLineKeys): number =>
     (this.report?.lines ?? []).reduce((s, l) => s + (Number(l[key]) || 0), 0);
 
-  get totalDue(): number {
-    const base = this.sum('total');
-    const fuel =
-      (this.report?.fuelProgram ?? 0) +
-      (this.report?.fuelPilotOrKT ?? 0) +
-      (this.report?.fuelSurcharge ?? 0);
-    return base + fuel;
-  }
+  // ------------------ trackBy ------------------
 
-  // ------- Export: PDF -------
+  trackByLineId = (_: number, line: PayReportLine) => line.id ?? -1;
+
+  // ------------------ Export: PDF ------------------
+
   async exportPdf(): Promise<void> {
     if (!this.reportArea) return;
     const el = this.reportArea.nativeElement;
@@ -165,24 +206,21 @@ export class OpenPayReportComponent implements OnInit {
     const imgData = canvas.toDataURL('image/png');
 
     const pdf = new jsPDF('p', 'mm', 'a4');
-    const pageWidth = pdf.internal.pageSize.getWidth();
+    const pageWidth  = pdf.internal.pageSize.getWidth();
     const pageHeight = pdf.internal.pageSize.getHeight();
 
-    // scale image to page width
-    const imgWidth = pageWidth;
+    const imgWidth  = pageWidth;
     const imgHeight = (canvas.height * imgWidth) / canvas.width;
 
-    let y = 0;
     if (imgHeight <= pageHeight) {
-      pdf.addImage(imgData, 'PNG', 0, y, imgWidth, imgHeight, undefined, 'FAST');
+      pdf.addImage(imgData, 'PNG', 0, 0, imgWidth, imgHeight, undefined, 'FAST');
     } else {
-      // paginate
       let remaining = imgHeight;
-      let canvasPos = 0;
+      let offset = 0;
       while (remaining > 0) {
-        pdf.addImage(imgData, 'PNG', 0, -canvasPos, imgWidth, imgHeight, undefined, 'FAST');
+        pdf.addImage(imgData, 'PNG', 0, -offset, imgWidth, imgHeight, undefined, 'FAST');
         remaining -= pageHeight;
-        canvasPos += pageHeight;
+        offset += pageHeight;
         if (remaining > 0) pdf.addPage();
       }
     }
@@ -191,7 +229,8 @@ export class OpenPayReportComponent implements OnInit {
     pdf.save(filename);
   }
 
-  // ------- Export: CSV -------
+  // ------------------ Export: CSV ------------------
+
   exportCsv(): void {
     if (!this.report) return;
 
@@ -201,7 +240,7 @@ export class OpenPayReportComponent implements OnInit {
       'Trailer #',
       'Job #',
       'Loaded',
-      'Unload',
+      'Unloaded',
       'Weight/Hour',
       'Truck Paid',
       'Total',
@@ -210,39 +249,40 @@ export class OpenPayReportComponent implements OnInit {
       'Contractor Paid'
     ];
 
-    const rows = this.report.lines.map(l => [
+    const rows = (this.report.lines || []).map(l => [
       l.date,
       l.truckNumber,
       l.trailerNumber ?? '',
       l.jobNumber,
-      quote(l.loaded),
-      quote(l.unloaded),
-      toNum(l.weightOrHour),
-      toNum(l.truckPaid),
-      toNum(l.total),
-      toNum(l.trailerRent),
-      toNum(l.brokerCharge),
-      toNum(l.contractorPaid)
+      safe(l.loaded),
+      safe(l.unloaded),
+      num(l.weightOrHour),
+      num(l.truckPaid),
+      num(l.total),
+      num(l.trailerRent),
+      num(l.brokerCharge),
+      num(l.contractorPaid)
     ]);
 
-    // footer rows
+    // totals row
     rows.push([]);
     rows.push(['', '', '', '', '', 'Totals',
-      toNum(this.sum('weightOrHour')),
-      toNum(this.sum('truckPaid')),
-      toNum(this.sum('total')),
-      toNum(this.sum('trailerRent')),
-      toNum(this.sum('brokerCharge')),
-      toNum(this.sum('contractorPaid'))
+      num(this.sum('weightOrHour')),
+      num(this.sum('truckPaid')),
+      num(this.sum('total')),
+      num(this.sum('trailerRent')),
+      num(this.sum('brokerCharge')),
+      num(this.sum('contractorPaid'))
     ]);
 
-    rows.push(['', '', '', '', '', 'Fuel Program', '', '', '', '', '', toNum(this.report.fuelProgram)]);
-    rows.push(['', '', '', '', '', 'Fuel - Pilot/KT', '', '', '', '', '', toNum(this.report.fuelPilotOrKT)]);
-    rows.push(['', '', '', '', '', 'Fuel Surcharge', '', '', '', '', '', toNum(this.report.fuelSurcharge)]);
-    rows.push(['', '', '', '', '', 'Total Due', '', '', '', '', '', toNum(this.totalDue)]);
+    // footer like the PDF
+    rows.push(['', '', '', '', '', 'Fuel Program',   '', '', '', '', '', num(this.report.fuelProgram)]);
+    rows.push(['', '', '', '', '', 'Fuel - Pilot/KT','', '', '', '', '', num(this.report.fuelPilotOrKT)]);
+    rows.push(['', '', '', '', '', 'Fuel Surcharge', '', '', '', '', '', num(this.report.fuelSurcharge)]);
+    rows.push(['', '', '', '', '', 'Total Due',      '', '', '', '', '', num(this.report.totalDue)]);
 
     const csv = [header, ...rows]
-      .map(cols => cols.map(safeCsv).join(','))
+      .map(cols => cols.map(asCsv).join(','))
       .join('\r\n');
 
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
@@ -252,9 +292,9 @@ export class OpenPayReportComponent implements OnInit {
     a.click();
     URL.revokeObjectURL(a.href);
 
-    function toNum(v: any) { return v ?? 0; }
-    function quote(v: any) { return v ?? ''; }
-    function safeCsv(v: any) {
+    function num(v: any) { return v ?? 0; }
+    function safe(v: any) { return v ?? ''; }
+    function asCsv(v: any) {
       const s = String(v ?? '');
       return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
     }

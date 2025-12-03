@@ -131,7 +131,7 @@
             </tr>
             <tr>
             <td [attr.colspan]="isEditing ? 12 : 12" class="text-end fw-bold">Total Due</td>
-            <td class="fw-bold">{{ totalDue | currency }}</td>
+            <<td class="fw-bold">{{ report?.totalDue || 0 | currency }}</td>
             </tr>
         </tfoot>
         </table>

@@ -1,8 +1,3 @@
-from django.utils import timezone
-from datetime import timedelta
-from django.db.models import Q, Prefetch
-from django.utils.dateparse import parse_date
-from decimal import Decimal
 from django.http import HttpResponse
 from rest_framework import viewsets, generics, permissions, status
 from rest_framework.decorators import api_view
@@ -15,13 +10,9 @@ from django.utils.dateparse import parse_date
 from datetime import timedelta
 from decimal import Decimal
 from django.utils import timezone
-from .emails import send_password_otp_email
-from django.contrib.auth import get_user_model
 from .serializers import RequestOTPSerializer, VerifyOTPSerializer, ResetPasswordSerializer
 from .models import PasswordOTP
-
-
-
+from .emails import send_password_otp_email
 from django.contrib.auth import get_user_model
 from .models import (
     Job, Customer, Driver, Role, UserRole, Comment, Truck, DriverTruckAssignment, Operator, Address, JobDriverAssignment,Invoice, InvoiceLine,PayReport, PayReportLine
@@ -346,7 +337,6 @@ class PayReportLineViewSet(viewsets.ModelViewSet):
     def perform_update(self, serializer):
         line = serializer.save()  # model.save() recomputes totals
         line.report.recalc_from_lines()
-User = get_user_model()
 
 def _recent_otp_count(user, minutes=15):
     since = timezone.now() - timedelta(minutes=minutes)

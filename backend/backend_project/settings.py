@@ -169,14 +169,14 @@ SIMPLE_JWT = {
 # SMTP2GO Configuration
 EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
 EMAIL_HOST = "mail.smtp2go.com"
-EMAIL_PORT = 2525  # SMTP2GO port (also supports 587, 80, 465)
+EMAIL_PORT = 587  # SMTP2GO port (also supports 587, 80, 465)
 EMAIL_USE_TLS = True
 EMAIL_USE_SSL = False  # Use TLS, not SSL
 
 # Credentials from .env file
 EMAIL_HOST_USER = os.environ.get("SMTP_USERNAME")
 EMAIL_HOST_PASSWORD = os.environ.get("SMTP_PASSWORD")
-DEFAULT_FROM_EMAIL = os.environ.get("FROM_EMAIL", "noreply@meatontrucking.com")
+DEFAULT_FROM_EMAIL = os.environ.get("FROM_EMAIL")
 
 # Email timeout settings
 EMAIL_TIMEOUT = 10  # seconds

@@ -9,6 +9,7 @@ import { MatDialog } from '@angular/material/dialog'; // Import MatDialog servic
 import { DbDispatchDialogComponent, DispatchDialogData } from './db-dispatch-dialog/db-dispatch-dialog.component';
 import { Router, RouterModule } from '@angular/router';
 import { JobService } from 'src/app/services/job.service';
+import { environment } from 'src/environments/environment';
 
 
 @Component({
@@ -87,5 +88,29 @@ export class DailyBoardComponent implements OnInit {
     }
   });
 }
+  getStaticMapUrl(job: any): string {
+  const key = (environment as any).googleMapsKey;
+  const o = job?.loading_address_info;
+  const d = job?.unloading_address_info;
+
+  if (!o?.latitude || !o?.longitude || !d?.latitude || !d?.longitude || !key) {
+    return '';
+  }
+
+  const origin = `${o.latitude},${o.longitude}`;
+  const dest   = `${d.latitude},${d.longitude}`;
+  const size  = '640x360'; 
+  const scale = 2;         
+
+  const markers =
+    `markers=color:green|label:S|${origin}` +
+    `&markers=color:red|label:E|${dest}`;
+
+  const path =
+    `path=weight:5|color:0x1e88e5|${origin}|${dest}`;
+
+  return `https://maps.googleapis.com/maps/api/staticmap?size=${size}&scale=${scale}&maptype=roadmap&${markers}&${path}&key=${key}`;
+}
+
 
 }

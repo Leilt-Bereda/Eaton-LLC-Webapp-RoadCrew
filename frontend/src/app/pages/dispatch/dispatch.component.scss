@@ -14,4 +14,203 @@
   margin-left: 1rem; /* Adjust the spacing between the input and button */
   min-width: 9rem; /* Ensure the button is wide enough for the text */
   white-space: nowrap; /* Prevent text from wrapping onto the next line */
+  position: relative;
+  z-index: 10; /* Ensure button is clickable above other elements */
+  cursor: pointer;
+}
+
+/* Date input specific styling */
+.d-flex.align-items-center input[type="date"] {
+  position: relative;
+  z-index: 1; /* Lower z-index than button */
+}
+
+.d-flex {
+  display: flex;
+}
+
+.justify-content-between {
+  justify-content: space-between;
+}
+
+.align-items-center {
+  align-items: center;
+}
+
+.gap-3 {
+  gap: 1rem;
+}
+
+.mb-3 {
+  margin-bottom: 1rem;
+}
+
+h3 {
+  margin: 0;
+  color: #333;
+  font-size: 1.5rem;
+  font-weight: 600;
+}
+
+// Date filter styling
+.date-filter {
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  z-index: 1;
+  
+  .form-label {
+    font-size: 0.875rem;
+    color: #666;
+    font-weight: 500;
+    margin-bottom: 0.25rem;
+  }
+}
+
+.custom-date-input {
+  min-width: 180px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 14px;
+  
+  &:focus {
+    outline: none;
+    border-color: #007bff;
+    box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25);
+  }
+}
+
+.custom-button {
+  font-weight: 500;
+  border-radius: 4px;
+  
+  &:hover {
+    opacity: 0.9;
+  }
+}
+
+// Card styling
+.card {
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+  position: relative;
+  z-index: 0;
+  
+  .card-body {
+    padding: 1.5rem;
+  }
+}
+
+// Table styling
+.table-responsive {
+  overflow-x: auto;
+}
+
+.table {
+  width: 100%;
+  margin-bottom: 0;
+  border-collapse: collapse;
+  
+  thead {
+    background-color: #f8f9fa;
+    
+    th {
+      padding: 12px 15px;
+      text-align: left;
+      font-weight: 600;
+      color: #555;
+      font-size: 0.875rem;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      border-bottom: 2px solid #dee2e6;
+      
+      &:first-child {
+        width: 50px;
+        text-align: center;
+      }
+    }
+  }
+  
+  tbody {
+    tr {
+      border-bottom: 1px solid #e9ecef;
+      transition: background-color 0.2s;
+      
+      &:hover {
+        background-color: #f8f9fa;
+      }
+      
+      &:last-child {
+        border-bottom: none;
+      }
+      
+      td {
+        padding: 12px 15px;
+        color: #333;
+        font-size: 0.9rem;
+        
+        &:first-child {
+          text-align: center;
+        }
+        
+        input[type="checkbox"] {
+          cursor: pointer;
+          width: 16px;
+          height: 16px;
+        }
+      }
+    }
+  }
+}
+
+.text-center {
+  text-align: center;
+}
+
+.text-muted {
+  color: #6c757d;
+}
+
+.py-4 {
+  padding-top: 1.5rem;
+  padding-bottom: 1.5rem;
+}
+
+// Responsive design
+@media (max-width: 768px) {
+  .d-flex.justify-content-between {
+    flex-direction: column;
+    gap: 1rem;
+    align-items: flex-start;
+  }
+  
+  .d-flex.align-items-center {
+    flex-direction: column;
+    align-items: flex-start;
+    width: 100%;
+    
+    input, button {
+      width: 100%;
+      margin-left: 0 !important;
+      margin-top: 0.5rem;
+    }
+    
+    .date-filter {
+      width: 100%;
+      
+      .custom-date-input {
+        width: 100%;
+      }
+    }
+  }
+  
+  .table {
+    font-size: 0.8rem;
+    
+    thead th,
+    tbody td {
+      padding: 8px 10px;
+    }
+  }
 }

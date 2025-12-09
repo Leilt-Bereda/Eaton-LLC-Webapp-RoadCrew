@@ -2,15 +2,7 @@ import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router, ActivatedRoute } from '@angular/router';
 import { DatePipe } from '@angular/common';
-
-type AssignmentData = {
-  id?: number;
-  job: string;
-  driver: string;
-  truck_type: string;
-  jobDate: string;
-  time: string;
-};
+import { DispatchAssignmentStorageService, AssignmentData } from '../../../services/dispatch-assignment-storage.service';
 
 @Component({
   selector: 'app-view-dispatch-assignment',
@@ -26,17 +18,11 @@ export class ViewDispatchAssignmentComponent implements OnInit {
   loading = false;
   error: string | null = null;
 
-  // Hardcoded assignments data (same as dispatch component)
-  private assignmentsData: AssignmentData[] = [
-    { id: 1, job: 'HW72', driver: 'John Doe', truck_type: 'Semi', jobDate: '2025-03-13', time: '10:30' },
-    { id: 2, job: 'I-32', driver: 'Jane Doe', truck_type: 'Belly Dump', jobDate: '2025-06-25', time: '14:00' },
-    { id: 3, job: 'HW73', driver: 'Alice Smith', truck_type: 'Flatbed', jobDate: '2025-03-13', time: '10:30' }
-  ];
-
   constructor(
     private router: Router,
     private route: ActivatedRoute,
-    private datePipe: DatePipe
+    private datePipe: DatePipe,
+    private storageService: DispatchAssignmentStorageService
   ) {}
 
   ngOnInit(): void {
@@ -54,7 +40,7 @@ export class ViewDispatchAssignmentComponent implements OnInit {
     this.loading = true;
     this.error = null;
     
-    const found = this.assignmentsData.find(a => a.id === id);
+    const found = this.storageService.getAssignmentById(id);
     if (found) {
       this.assignment = found;
     } else {

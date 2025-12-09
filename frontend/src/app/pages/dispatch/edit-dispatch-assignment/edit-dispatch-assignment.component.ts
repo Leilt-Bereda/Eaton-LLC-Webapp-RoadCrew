@@ -4,15 +4,7 @@ import { Router, ActivatedRoute } from '@angular/router';
 import { FormGroup, FormControl, ReactiveFormsModule, Validators } from '@angular/forms';
 import { DatePipe } from '@angular/common';
 import Swal from 'sweetalert2';
-
-type AssignmentData = {
-  id?: number;
-  job: string;
-  driver: string;
-  truck_type: string;
-  jobDate: string;
-  time: string;
-};
+import { DispatchAssignmentStorageService } from '../../../services/dispatch-assignment-storage.service';
 
 @Component({
   selector: 'app-edit-dispatch-assignment',
@@ -34,17 +26,11 @@ export class EditDispatchAssignmentComponent implements OnInit {
   loading = false;
   error: string | null = null;
 
-  // Hardcoded assignments data (same as dispatch component)
-  private assignmentsData: AssignmentData[] = [
-    { id: 1, job: 'HW72', driver: 'John Doe', truck_type: 'Semi', jobDate: '2025-03-13', time: '10:30' },
-    { id: 2, job: 'I-32', driver: 'Jane Doe', truck_type: 'Belly Dump', jobDate: '2025-06-25', time: '14:00' },
-    { id: 3, job: 'HW73', driver: 'Alice Smith', truck_type: 'Flatbed', jobDate: '2025-03-13', time: '10:30' }
-  ];
-
   constructor(
     private router: Router,
     private route: ActivatedRoute,
-    private datePipe: DatePipe
+    private datePipe: DatePipe,
+    private storageService: DispatchAssignmentStorageService
   ) {}
 
   ngOnInit(): void {
@@ -62,7 +48,7 @@ export class EditDispatchAssignmentComponent implements OnInit {
     this.loading = true;
     this.error = null;
     
-    const found = this.assignmentsData.find(a => a.id === id);
+    const found = this.storageService.getAssignmentById(id);
     if (found) {
       // Convert time from "10:30" format to "HH:mm" for time input
       const timeParts = found.time.split(':');
@@ -90,8 +76,22 @@ export class EditDispatchAssignmentComponent implements OnInit {
       return;
     }
 
-    // In a real app, you would call the API here
-    // For now, we'll just show a success message
+    // Get form values
+    const formValue = this.assignmentForm.getRawValue();
+    // Convert time back to "HH:mm" format if needed
+    const timeValue = formValue.time || '';
+    const timeParts = timeValue.split(':');
+    const timeFormatted = `${timeParts[0]}:${timeParts[1] || '00'}`;
+
+    // Update assignment in service
+    this.storageService.updateAssignment(this.assignmentId, {
+      job: formValue.job || '',
+      driver: formValue.driver || '',
+      truck_type: formValue.truck_type || '',
+      jobDate: formValue.jobDate || '',
+      time: timeFormatted
+    });
+
     Swal.fire({
       icon: 'success',
       title: 'Assignment Updated',

@@ -1,20 +1,14 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, OnDestroy } from '@angular/core';
 import { MatDialog } from '@angular/material/dialog';
 import { DispatchDialogComponent } from './dispatch-dialog/dispatch-dialog.component';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { Router, RouterModule, ActivatedRoute } from '@angular/router';
+import { Router, RouterModule, ActivatedRoute, NavigationEnd } from '@angular/router';
 import { DatePipe } from '@angular/common';
+import { DispatchAssignmentStorageService, AssignmentData } from '../../services/dispatch-assignment-storage.service';
+import { Subscription, filter } from 'rxjs';
 
-type AssignmentRow = {
-  id?: number;
-  job: string;
-  driver: string;
-  truck_type: string;
-  jobDate: string;
-  time: string;
-  selected?: boolean;
-};
+type AssignmentRow = AssignmentData;
 
 @Component({
   selector: 'app-dispatch',
@@ -24,28 +18,33 @@ type AssignmentRow = {
   imports: [CommonModule, FormsModule, RouterModule],
   providers: [DatePipe]
 })
-export class DispatchComponent implements OnInit {
+export class DispatchComponent implements OnInit, OnDestroy {
   selectedDate: string; // Stores the selected date
-  assignments: AssignmentRow[] = [
-    { id: 1, job: 'HW72', driver: 'John Doe', truck_type: 'Semi', jobDate: '2025-03-13', time: '10:30', selected: false },
-    { id: 2, job: 'I-32', driver: 'Jane Doe', truck_type: 'Belly Dump', jobDate: '2025-06-25', time: '14:00', selected: false },
-    { id: 3, job: 'HW73', driver: 'Alice Smith', truck_type: 'Flatbed', jobDate: '2025-03-13', time: '10:30', selected: false }
-  ];
-
+  assignments: AssignmentRow[] = [];
   filteredAssignments: AssignmentRow[] = [];
   selected: AssignmentRow[] = [];
+  private subscription?: Subscription;
 
   constructor(
     private datePipe: DatePipe,
     public dialog: MatDialog,
     private router: Router,
-    private route: ActivatedRoute
+    private route: ActivatedRoute,
+    private storageService: DispatchAssignmentStorageService
   ) {
     // Initialize with the current date in 'yyyy-MM-dd' format
     this.selectedDate = this.datePipe.transform(new Date(), 'yyyy-MM-dd') || '';
   }
 
   ngOnInit(): void {
+    // Load assignments from service
+    this.loadAssignments();
+    
+    // Subscribe to assignment updates
+    this.subscription = this.storageService.assignments$.subscribe(() => {
+      this.loadAssignments();
+    });
+
     // Check for date query parameter to restore previous selection
     this.route.queryParams.subscribe(params => {
       if (params['date']) {
@@ -54,6 +53,27 @@ export class DispatchComponent implements OnInit {
       // Filter assignments by the selected date
       this.filteredAssignments = this.filterAssignmentsByDate(this.selectedDate);
     });
+
+    // Reload when returning to this page
+    this.router.events.pipe(
+      filter(event => event instanceof NavigationEnd)
+    ).subscribe(() => {
+      if (this.router.url === '/dispatch' || this.router.url.startsWith('/dispatch?')) {
+        this.loadAssignments();
+      }
+    });
+  }
+
+  ngOnDestroy(): void {
+    if (this.subscription) {
+      this.subscription.unsubscribe();
+    }
+  }
+
+  loadAssignments(): void {
+    this.assignments = this.storageService.getAllAssignments().map(a => ({ ...a, selected: false }));
+    this.filteredAssignments = this.filterAssignmentsByDate(this.selectedDate);
+    this.onSelect();
   }
 
   // Open the dispatch dialog
@@ -125,11 +145,9 @@ export class DispatchComponent implements OnInit {
     
     if (!confirm('Are you sure you want to delete this dispatch assignment?')) return;
     
-    // Remove from assignments array
-    this.assignments = this.assignments.filter(a => a.id !== id);
-    // Update filtered list
-    this.filteredAssignments = this.filterAssignmentsByDate(this.selectedDate);
-    this.onSelect();
+    // Delete from service
+    this.storageService.deleteAssignment(id);
+    // loadAssignments will be called automatically via subscription
   }
 
   // Bulk delete
@@ -138,11 +156,8 @@ export class DispatchComponent implements OnInit {
     if (!confirm(`Are you sure you want to delete ${this.selected.length} selected assignment(s)?`)) return;
     
     const ids = this.selected.map(s => s.id).filter(id => id !== undefined) as number[];
-    // Remove selected assignments
-    this.assignments = this.assignments.filter(a => !ids.includes(a.id!));
-    // Update filtered list
-    this.filteredAssignments = this.filterAssignmentsByDate(this.selectedDate);
-    this.selected = [];
-    this.onSelect();
+    // Delete from service
+    this.storageService.deleteAssignments(ids);
+    // loadAssignments will be called automatically via subscription
   }
 }

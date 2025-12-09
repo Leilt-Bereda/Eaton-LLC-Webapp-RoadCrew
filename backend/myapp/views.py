@@ -334,6 +334,11 @@ class PayReportLineViewSet(viewsets.ModelViewSet):
             qs = qs.filter(job_id=job_id)
         return qs
 
+    def perform_create(self, serializer):
+        line = serializer.save()
+        if line.report:
+            line.report.recalc_from_lines()
+
     def perform_update(self, serializer):
         line = serializer.save()  # model.save() recomputes totals
         line.report.recalc_from_lines()

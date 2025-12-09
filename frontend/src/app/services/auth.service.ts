@@ -9,12 +9,16 @@
   @Injectable({ providedIn: 'root' })
   export class AuthService {
     private api = environment.apiBaseUrl;
+    private usernameKey = 'username';
 
     constructor(private http: HttpClient) {}
 
     login(username: string, password: string): Observable<TokenResponse> {
       return this.http.post<TokenResponse>(`${this.api}login/`, { username, password }).pipe(
-        tap(tokens => this.saveTokens(tokens))
+        tap(tokens => {
+          this.saveTokens(tokens);
+          localStorage.setItem(this.usernameKey, username);
+        })
       );
     }
 
@@ -34,10 +38,12 @@
 
     get access()  { return localStorage.getItem('access'); }
     get refreshT() { return localStorage.getItem('refresh'); }
+    get username() { return localStorage.getItem(this.usernameKey); }
 
     logout() {
       localStorage.removeItem('access');
       localStorage.removeItem('refresh');
+      localStorage.removeItem(this.usernameKey);
     }
 
     isLoggedIn(): boolean {

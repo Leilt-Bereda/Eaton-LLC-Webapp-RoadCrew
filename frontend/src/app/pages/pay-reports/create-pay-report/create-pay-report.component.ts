@@ -1,7 +1,7 @@
 // create-pay-report.component.ts
 import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
+import { FormBuilder, FormsModule, ReactiveFormsModule, Validators } from '@angular/forms';
 import { Router, RouterModule } from '@angular/router';
 import { finalize } from 'rxjs/operators';
 import { PayReportsService, Driver } from 'src/app/services/pay-reports.service';
@@ -9,7 +9,7 @@ import { PayReportsService, Driver } from 'src/app/services/pay-reports.service'
 @Component({
   selector: 'app-create-pay-report',
   standalone: true,
-  imports: [CommonModule, ReactiveFormsModule, RouterModule],
+  imports: [CommonModule, FormsModule, ReactiveFormsModule, RouterModule],
   templateUrl: './create-pay-report.component.html'
 })
 export class CreatePayReportComponent implements OnInit {
@@ -17,8 +17,9 @@ export class CreatePayReportComponent implements OnInit {
   errorMsg = '';
   successMsg = '';
 
-  drivers: Driver[] = [];
+  drivers: { id: number; name: string }[] = [];
   loadingDrivers = false;
+  driverQuery = '';
 
   form = this.fb.group({
     weekStart: ['', Validators.required],
@@ -37,9 +38,24 @@ export class CreatePayReportComponent implements OnInit {
     this.svc.listDrivers()
       .pipe(finalize(() => (this.loadingDrivers = false)))
       .subscribe({
-        next: (list) => (this.drivers = list || []),
+        next: (list) => (this.drivers = this.normalizeDrivers(list)),
         error: () => { this.errorMsg = 'Could not load drivers.'; this.drivers = []; }
       });
+  }
+
+  private normalizeDrivers(list: Driver[] = []): { id: number; name: string }[] {
+    return (list || [])
+      .map((d: Driver | any) => {
+        const id = d?.id ?? d?.driver_id;
+        const name = (d?.name ?? [d?.first_name, d?.last_name].filter(Boolean).join(' ')).trim();
+        return { id, name: name || 'Unnamed' };
+      })
+      .filter(d => d.id != null);
+  }
+
+  filteredDrivers(): { id: number; name: string }[] {
+    const q = this.driverQuery.trim().toLowerCase();
+    return !q ? this.drivers : this.drivers.filter(d => d.name.toLowerCase().includes(q));
   }
 
   save(): void {
@@ -62,10 +78,8 @@ export class CreatePayReportComponent implements OnInit {
       return;
     }
 
-    const driverName = this.drivers.find(d => d.id === driverId)?.name;
-
     this.saving = true;
-    this.svc.createReportResponse({ weekStart, weekEnd, driverName })  // name is optional
+    this.svc.createReportResponse({ weekStart, weekEnd, driverId })
       .pipe(finalize(() => (this.saving = false)))
       .subscribe({
         next: (resp) => {

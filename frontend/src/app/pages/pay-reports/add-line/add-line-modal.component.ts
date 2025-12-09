@@ -4,6 +4,7 @@ import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { debounceTime, distinctUntilChanged, filter, Subscription, switchMap, tap, catchError, of } from 'rxjs';
 import { PayReportLine } from 'src/app/models/pay-report.model';
 import { JobsService, PayReportsService, JobLite } from '../../../services/pay-reports.service';
+import { Router } from '@angular/router';
 
 @Component({
   selector: 'app-add-line-modal',
@@ -24,6 +25,7 @@ export class AddLineModalComponent implements OnInit, OnDestroy {
   jobLoading = false;
   jobError = '';
   saving = false;
+  selectedJobId: number | null = null;
 
   suggestions: JobLite[] = [];
   showSuggestions = false;
@@ -31,13 +33,12 @@ export class AddLineModalComponent implements OnInit, OnDestroy {
   private subs = new Subscription();
 
   form = this.fb.group({
-    date: ['', Validators.required],
     jobNumber: ['', Validators.required],
     truckNumber: ['', Validators.required],
-    trailerNumber: [''],
+    trailerNumber: ['', Validators.required],
 
-    loaded: [''],
-    unloaded: [''],
+    loaded: ['', Validators.required],
+    unloaded: ['', Validators.required],
     weightOrHour: [0],
     truckPaid: [0],
     total: [0],
@@ -49,12 +50,12 @@ export class AddLineModalComponent implements OnInit, OnDestroy {
   constructor(
     private fb: FormBuilder,
     private jobs: JobsService,
-    private reports: PayReportsService
+    private reports: PayReportsService,
+    private router: Router
   ) {}
 
   ngOnInit(): void {
-    // Prefill date to weekStart (optional)
-    this.form.patchValue({ date: this.weekStart });
+    // Prefill jobNumber suggestions; no date picker (week shown at top)
 
     // --- Live job search for suggestions (typeahead) ---
     const suggestSub = this.form.controls.jobNumber.valueChanges.pipe(
@@ -121,6 +122,7 @@ export class AddLineModalComponent implements OnInit, OnDestroy {
   }
 
   private applyJobAutoFill(job: JobLite | any) {
+    this.selectedJobId = job?.id ?? job?.job_id ?? null;
     const loaded = job.loading_address_info
       ? (job.loading_address_info.location_name || job.loading_address_info.street_address || '')
       : '';
@@ -147,41 +149,73 @@ export class AddLineModalComponent implements OnInit, OnDestroy {
   }
 
   // ---- Save line ----
-  save(): void {
+  save(navigateAfter = false): void {
     if (this.form.invalid || !this.reportId) {
       this.form.markAllAsTouched();
       return;
     }
     this.saving = true;
+    this.jobError = '';
+
+    const todayIso = new Date().toISOString().slice(0, 10);
+    const date = this.weekStart || todayIso;
+    const jobNumber = (this.form.value.jobNumber || '').trim();
+    const truckNumber = (this.form.value.truckNumber || '').trim();
+    const trailerNumber = (this.form.value.trailerNumber || '').trim();
+    const loaded = (this.form.value.loaded || '').trim();
+    const unloaded = (this.form.value.unloaded || '').trim();
+
+    if (!jobNumber || !truckNumber || !trailerNumber || !loaded || !unloaded) {
+      this.saving = false;
+      this.jobError = 'Job, truck, trailer, loaded, and unloaded are required.';
+      return;
+    }
 
     // Backend expects PayReportLine fields
-    const payload = {
-      date: this.form.value.date,
-      jobNumber: this.form.value.jobNumber,
-      truckNumber: this.form.value.truckNumber,
-      trailerNumber: this.form.value.trailerNumber,
-      loaded: this.form.value.loaded,
-      unloaded: this.form.value.unloaded,
-      weightOrHour: Number(this.form.value.weightOrHour) || 0,
-      truckPaid: Number(this.form.value.truckPaid) || 0,
-      total: Number(this.form.value.total) || 0,
-      trailerRent: Number(this.form.value.trailerRent) || 0,
-      brokerCharge: Number(this.form.value.brokerCharge) || 0,
-      contractorPaid: Number(this.form.value.contractorPaid) || 0
-    } as any;
+    const payload: any = {
+      date, // align with report week (no date picker)
+      job: this.selectedJobId ?? undefined,
+      job_number: jobNumber,
+      truck_number: truckNumber,
+      trailer_number: trailerNumber,
+      loaded,
+      unloaded,
+      weight_or_hour: Number(this.form.value.weightOrHour) || 0,
+      truck_paid: Number(this.form.value.truckPaid) || 0,
+      trailer_rent: Number(this.form.value.trailerRent) || 0,
+      broker_charge: Number(this.form.value.brokerCharge) || 0,
+      // total/contractor_paid are computed server-side
+    };
 
     // Use top-level pay-report-lines endpoint
     this.reports.createLineTop(this.reportId, payload).subscribe({
       next: (created) => {
         this.saving = false;
         this.created.emit(created);
+        if (navigateAfter) {
+          this.router.navigate(['/pay-reports', this.reportId]);
+        }
         this.close();
       },
       error: (err) => {
         this.saving = false;
-        this.jobError = 'Unable to save. Please try again.';
-        console.error(err);
+        const e = err?.error;
+        const pick = (o: any, keys: string[]) => {
+          for (const k of keys) {
+            if (o && o[k]) return Array.isArray(o[k]) ? o[k][0] : o[k];
+          }
+          return '';
+        };
+        const msg =
+          pick(e, ['detail', 'non_field_errors', 'report', 'job', 'job_number', 'truck_number', 'trailer_number', 'loaded', 'unloaded', 'date']) ||
+          'Unable to save. Please try again.';
+        this.jobError = msg;
+        console.error('[AddLine] save failed', err);
       }
     });
+  }
+
+  createAndReturn(): void {
+    this.save(true);
   }
 }

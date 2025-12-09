@@ -61,7 +61,7 @@ export class OpenPayReportComponent implements OnInit {
 
     this.svc.getReport(this.id).subscribe({
       next: (r) => {
-        this.report = r as PayReport;
+        this.report = this.normalizeReport(r as any);
         this.loading = false;
         this.fetchLines();
         if (after) after();
@@ -71,6 +71,22 @@ export class OpenPayReportComponent implements OnInit {
         this.errorMsg = err?.error?.detail || 'Unable to load pay report.';
       }
     });
+  }
+
+  private normalizeReport(r: any): PayReport {
+    return {
+      ...r,
+      driverName: r?.driverName ?? r?.driver_name ?? '',
+      weekStart: r?.weekStart ?? r?.week_start ?? '',
+      weekEnd: r?.weekEnd ?? r?.week_end ?? '',
+      fuelProgram: r?.fuelProgram ?? r?.fuel_program ?? 0,
+      fuelPilotOrKT: r?.fuelPilotOrKT ?? r?.fuel_pilot_or_kt ?? 0,
+      fuelSurcharge: r?.fuelSurcharge ?? r?.fuel_surcharge ?? 0,
+      totalWeightOrHours: r?.totalWeightOrHours ?? r?.total_weight_or_hours ?? 0,
+      totalTruckPaid: r?.totalTruckPaid ?? r?.total_truck_paid ?? 0,
+      totalAmount: r?.totalAmount ?? r?.total_amount ?? 0,
+      totalDue: r?.totalDue ?? r?.total_due ?? 0,
+    } as PayReport;
   }
 
   private fetchLines(): void {
@@ -96,10 +112,9 @@ export class OpenPayReportComponent implements OnInit {
 
   // When AddLineModal emits a created line
   onLineCreated(line: PayReportLine): void {
-    if (!this.report) return;
-    this.report.lines = [...(this.report.lines || []), line];
-    this.recalculateTotals();
+    // Refresh from API to pick up recomputed header totals and normalized fields
     this.addOpen = false;
+    this.fetchReport();
   }
 
   // ------------------ Inline edit ops ------------------

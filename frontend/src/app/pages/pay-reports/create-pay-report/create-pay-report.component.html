@@ -19,10 +19,20 @@
         <label class="form-label">Driver</label>
 
         <ng-container *ngIf="!loadingDrivers; else loading">
-          <select class="form-select" formControlName="driverId">
-            <option [ngValue]="null" disabled>Select driver</option>
-            <option *ngFor="let d of drivers" [ngValue]="d.id">{{ d.name }}</option>
-          </select>
+          <div class="typeahead">
+            <input
+              class="form-control mb-2"
+              type="text"
+              placeholder="Type to filter drivers…"
+              [(ngModel)]="driverQuery"
+              [ngModelOptions]="{ standalone: true }"
+              name="driverFilter"
+            />
+            <select class="form-select" formControlName="driverId" size="6">
+              <option [ngValue]="null" disabled>Select driver</option>
+              <option *ngFor="let d of filteredDrivers()" [ngValue]="d.id">{{ d.name }}</option>
+            </select>
+          </div>
           <div class="text-muted small mt-1" *ngIf="drivers.length === 0">
             No drivers found. Create a driver first?
           </div>

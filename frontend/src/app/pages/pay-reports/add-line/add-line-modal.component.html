@@ -12,16 +12,11 @@
         <div class="modal-body">
       <div class="form-group">
             <label class="form-label">Week</label>
-            <div class="form-text">{{ weekStart }} → {{ weekEnd }}</div>
-          </div>
-
-      <div class="form-group">
-            <label class="form-label">Date</label>
-            <input type="date" class="form-control" formControlName="date" />
+            <div class="form-text fw-semibold">{{ weekStart }} → {{ weekEnd }}</div>
           </div>
 
       <div class="form-group position-relative">
-      <label class="form-label">Job #</label>
+      <label class="form-label">Job # (type to search)</label>
       <input type="text"
             class="form-control"
             formControlName="jobNumber"
@@ -65,16 +60,19 @@
       <div class="form-group">
             <label class="form-label">Trailer #</label>
             <input type="text" class="form-control" formControlName="trailerNumber" />
+            <div class="form-text text-danger" *ngIf="form.controls.trailerNumber.touched && form.controls.trailerNumber.invalid">Required</div>
           </div>
 
       <div class="form-group">
             <label class="form-label">Loaded</label>
             <input type="text" class="form-control" formControlName="loaded" />
+            <div class="form-text text-danger" *ngIf="form.controls.loaded.touched && form.controls.loaded.invalid">Required</div>
           </div>
 
       <div class="form-group">
-            <label class="form-label">Unload</label>
+            <label class="form-label">Unloaded</label>
             <input type="text" class="form-control" formControlName="unloaded" />
+            <div class="form-text text-danger" *ngIf="form.controls.unloaded.touched && form.controls.unloaded.invalid">Required</div>
           </div>
 
           <div class="row">
@@ -116,19 +114,24 @@
               <label class="form-label">Contractor Paid</label>
               <input type="number" step="0.01" class="form-control" formControlName="contractorPaid" />
           </div>
-            </div>
-          </div>
-
-          <div class="text-muted small">
-            Values were prefilled from Job #. You can override before saving.
-          </div>
         </div>
+      </div>
 
-        <div class="modal-footer">
-          <button type="button" class="btn btn-outline-secondary" (click)="close()">Cancel</button>
-          <button type="submit" class="btn btn-primary" [disabled]="form.invalid || saving">
-            {{ saving ? 'Saving…' : 'Save' }}
-          </button>
-        </div>
-      </form>
+      <div class="text-muted small">
+        Values were prefilled from Job #. You can override before saving.
+      </div>
+    </div>
+
+    <div class="modal-footer">
+      <button type="button" class="btn btn-outline-secondary" (click)="close()">Cancel</button>
+      <div class="d-flex flex-column flex-md-row gap-2 w-100">
+        <button type="button" class="btn btn-outline-primary flex-fill" [disabled]="form.invalid || saving" (click)="createAndReturn()">
+          {{ saving ? 'Saving…' : 'Create & View Report' }}
+        </button>
+        <button type="submit" class="btn btn-primary flex-fill" [disabled]="form.invalid || saving">
+          {{ saving ? 'Saving…' : 'Save Line' }}
+        </button>
+      </div>
+    </div>
+  </form>
 </div>

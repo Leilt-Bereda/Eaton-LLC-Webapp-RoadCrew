@@ -1,7 +1,7 @@
 <div class="d-flex justify-content-between align-items-center mb-3">
   <div class="d-flex align-items-center gap-3">
-    <h3 class="mb-0" style="color: #2c3e50; font-weight: 500;">Pay Report — {{ report.driverName }}</h3>
-    <div class="text-muted">{{ report.weekStart }} to {{ report.weekEnd }}</div>
+    <h3 class="mb-0" style="color: #2c3e50; font-weight: 500;">Pay Report — {{ report?.driverName }}</h3>
+    <div class="text-muted">{{ report?.weekStart }} to {{ report?.weekEnd }}</div>
     </div>
     <div class="d-flex gap-2">
     <button class="btn btn-outline-primary" (click)="exportPdf()">
@@ -16,6 +16,9 @@
     </button>
     <button class="btn btn-primary" *ngIf="isEditing" (click)="saveReport()">
       <i class="bi bi-check-lg"></i> Save
+    </button>
+    <button class="btn btn-success" (click)="openAddModal()">
+      <i class="bi bi-plus-circle"></i> Add Line
     </button>
       </div>
   </div>
@@ -131,7 +134,7 @@
             </tr>
             <tr>
             <td [attr.colspan]="isEditing ? 12 : 12" class="text-end fw-bold">Total Due</td>
-            <<td class="fw-bold">{{ report?.totalDue || 0 | currency }}</td>
+            <td class="fw-bold">{{ report?.totalDue || 0 | currency }}</td>
             </tr>
         </tfoot>
         </table>

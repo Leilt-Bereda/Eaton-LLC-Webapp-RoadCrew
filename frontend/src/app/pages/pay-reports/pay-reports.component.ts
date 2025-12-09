@@ -2,9 +2,11 @@ import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router, RouterModule } from '@angular/router';
+import { forkJoin } from 'rxjs';
 
 import { SharedModule } from 'src/app/theme/shared/shared.module';
 import { PayReportsService } from '../../services/pay-reports.service';
+import { NotificationService } from 'src/app/services/notification.service';
 import { NewPayReportDialogComponent, NewPayReportResult } from './shared/new-pay-report-dialog/new-pay-report-dialog.component';
 import { PayReportHeader } from 'src/app/models/pay-report.model';
 
@@ -34,7 +36,7 @@ export class PayReportsComponent implements OnInit {
   drivers: { id: number; name: string }[] = [];
   showNewModal = false;
 
-  constructor(private router: Router, private svc: PayReportsService) {}
+  constructor(private router: Router, private svc: PayReportsService, private notify: NotificationService) {}
 
   ngOnInit(): void {
     this.loadFromApi();
@@ -45,7 +47,7 @@ export class PayReportsComponent implements OnInit {
   private loadFromApi(): void {
     this.svc.list().subscribe({
       next: (list) => {
-        const rows: PayReportHeaderRow[] = (list || []).map((h: any) => ({ ...h, selected: false }));
+        const rows: PayReportHeaderRow[] = (list || []).map((h: any) => this.normalizeHeader(h));
         this.allReports = rows;
         this.applyFilters();
       },
@@ -55,6 +57,21 @@ export class PayReportsComponent implements OnInit {
         this.reports = [...this.allReports];
       }
     });
+  }
+
+  private normalizeHeader(h: any): PayReportHeaderRow {
+    return {
+      id: h?.id ?? 0,
+      driverId: h?.driver ?? h?.driver_id,
+      driverName: h?.driverName ?? h?.driver_name ?? '',
+      weekStart: h?.weekStart ?? h?.week_start ?? '',
+      weekEnd: h?.weekEnd ?? h?.week_end ?? '',
+      totalWeightOrHours: h?.totalWeightOrHours ?? h?.total_weight_or_hours ?? 0,
+      totalTruckPaid: h?.totalTruckPaid ?? h?.total_truck_paid ?? 0,
+      totalAmount: h?.totalAmount ?? h?.total_amount ?? 0,
+      totalDue: h?.totalDue ?? h?.total_due ?? 0,
+      selected: false
+    };
   }
 
   private loadDrivers(): void {
@@ -106,9 +123,17 @@ export class PayReportsComponent implements OnInit {
 
   delete(id: number): void {
     if (!confirm('Are you sure you want to delete this pay report?')) return;
-    // TODO: call backend delete when endpoint is ready
-    this.allReports = this.allReports.filter(r => r.id !== id);
-    this.applyFilters();
+    this.svc.deleteReport(id).subscribe({
+      next: () => {
+        this.allReports = this.allReports.filter(r => r.id !== id);
+        this.applyFilters();
+        this.notify.add('Pay report deleted', 'success');
+      },
+      error: (err) => {
+        console.error('[PayReports] deleteReport() failed:', err);
+        this.notify.add('Failed to delete pay report', 'error');
+      }
+    });
   }
 
   deleteSelected(): void {
@@ -116,10 +141,19 @@ export class PayReportsComponent implements OnInit {
     const message = `Are you sure you want to delete ${this.selected.length} selected report(s)?`;
     if (!confirm(message)) return;
     const ids = new Set(this.selected.map(s => s.id));
-    // TODO: call backend delete for each id if needed
-    this.allReports = this.allReports.filter(r => !ids.has(r.id));
-    this.selected = [];
-    this.applyFilters();
+    const deletions = Array.from(ids).map(id => this.svc.deleteReport(id));
+    forkJoin(deletions).subscribe({
+      next: () => {
+        this.allReports = this.allReports.filter(r => !ids.has(r.id));
+        this.selected = [];
+        this.applyFilters();
+        this.notify.add('Selected pay reports deleted', 'success');
+      },
+      error: (err) => {
+        console.error('[PayReports] deleteSelected() failed:', err);
+        this.notify.add('Failed to delete selected reports', 'error');
+      }
+    });
   }
 
   // ------- new report dialog -------
@@ -133,14 +167,14 @@ export class PayReportsComponent implements OnInit {
     this.svc.createReport({
       weekStart: result.weekStart,
       weekEnd: result.weekEnd,
-      driverId: result.driverId,
-      driverName
+      driverId: result.driverId
     })
     .subscribe({
       next: (created: any) => {
         // reload list and navigate to the new report
         this.loadFromApi();
         const id = created?.id ?? 0;
+        this.notify.add('Pay report created', 'success');
         this.router.navigate(
           ['/pay-reports', id],
           { queryParams: { driver: driverName, from: result.weekStart, to: result.weekEnd, add: '1' } }
@@ -150,6 +184,7 @@ export class PayReportsComponent implements OnInit {
         console.error('[PayReports] createReport() failed:', err);
         // still refresh list to keep UI consistent
         this.loadFromApi();
+        this.notify.add('Failed to create pay report', 'error');
       }
     });
   }

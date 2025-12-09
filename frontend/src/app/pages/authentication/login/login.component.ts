@@ -24,18 +24,23 @@ export class LoginComponent {
 
   submit() {
     this.error = '';
-    if (this.form.invalid) return;
+    if (this.form.invalid || this.loading) {
+      this.form.markAllAsTouched();
+      return;
+    }
     this.loading = true;
-    const { username, password } = this.form.value;
+    const { username, password } = this.form.getRawValue();
+
     this.auth.login(username!, password!).subscribe({
       next: () => {
+        // tokens are already saved by AuthService.tap()
         this.loading = false;
         this.router.navigateByUrl('/daily-board');
       },
       error: (e) => {
         this.loading = false;
         this.error = 'Invalid username or password';
-        console.error(e);
+        console.error('Login error:', e);
       }
     });
   }

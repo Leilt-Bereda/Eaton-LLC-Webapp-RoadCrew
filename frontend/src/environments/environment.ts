@@ -7,7 +7,9 @@ import packageInfo from '../../package.json';
 export const environment = {
   appVersion: packageInfo.version,
   production: false,
-  apiBaseUrl: 'http://localhost:8000/api/'
+  apiBaseUrl: 'http://localhost:8000/api/',
+  googleMapsKey: ''
+
 };
 /*
  * For easier debugging in development mode, you can import the following file

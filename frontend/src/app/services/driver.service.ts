@@ -18,11 +18,4 @@ export class DriverService {
   getAllDrivers(): Observable<any[]> {
     return this.http.get<any[]>(this.apiUrl);
   }
-  deleteDriver(id: number): Observable<any> {
-    // Django REST: /api/drivers/<id>/
-    return this.http.delete(`${this.apiUrl}${id}/`);
-  }
-   updateDriver(id: number, data: any): Observable<any> {
-    return this.http.put(`${this.apiUrl}${id}/`, data);
-  }
 }

@@ -178,7 +178,7 @@ class InvoiceViewSet(viewsets.ModelViewSet):
         date     = self.request.query_params.get("date")
 
         if customer:
-            qs = qs.filter(customer__name__icontains=customer)
+            qs = qs.filter(customer__company_name__icontains=customer)
         if project:
             # adjust if your job/project field is named differently
             qs = qs.filter(job__project__icontains=project)

@@ -1,7 +1,12 @@
 from django.db import models
 from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin
-from django.contrib.postgres.fields import ArrayField, JSONField
 from django.db.models import JSONField
+# Try to import ArrayField, fallback to JSONField for SQLite compatibility
+try:
+    from django.contrib.postgres.fields import ArrayField
+except ImportError:
+    # For SQLite compatibility, use JSONField instead
+    ArrayField = JSONField
 from django.contrib.auth.models import User
 from decimal import Decimal
 from django.utils import timezone
@@ -35,8 +40,6 @@ class Customer(models.Model):
 
     def __str__(self):
         return self.company_name
-    def __str__(self):
-        return self.name
 
 
 class Operator(models.Model):
@@ -57,7 +60,8 @@ class Truck(models.Model):
     carrier = models.TextField()
     truck_number = models.CharField(max_length=100)
     license_plate = models.CharField(max_length=50)
-    market = ArrayField(models.TextField(), blank=True, default=list)
+    # Use JSONField for cross-database compatibility (works with both PostgreSQL and SQLite)
+    market = JSONField(default=list, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):

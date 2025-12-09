@@ -1,35 +1,68 @@
 // create-pay-report.component.ts
-import { Component } from '@angular/core';
+import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
+import { FormBuilder, FormsModule, ReactiveFormsModule, Validators } from '@angular/forms';
 import { Router, RouterModule } from '@angular/router';
 import { finalize } from 'rxjs/operators';
-import { PayReportsService } from 'src/app/services/pay-reports.service';
+import { PayReportsService, Driver } from 'src/app/services/pay-reports.service';
 
 @Component({
   selector: 'app-create-pay-report',
   standalone: true,
-  imports: [CommonModule, ReactiveFormsModule, RouterModule],
+  imports: [CommonModule, FormsModule, ReactiveFormsModule, RouterModule],
   templateUrl: './create-pay-report.component.html'
 })
-export class CreatePayReportComponent {
+export class CreatePayReportComponent implements OnInit {
   saving = false;
   errorMsg = '';
   successMsg = '';
 
+  drivers: { id: number; name: string }[] = [];
+  loadingDrivers = false;
+  driverQuery = '';
+
   form = this.fb.group({
     weekStart: ['', Validators.required],
     weekEnd:   ['', Validators.required],
-    driverName: ['']
+    driverId:  [null as number | null, Validators.required],   // ← use id
   });
 
   constructor(private fb: FormBuilder, private svc: PayReportsService, private router: Router) {}
+
+  ngOnInit(): void {
+    this.fetchDrivers();
+  }
+
+  private fetchDrivers(): void {
+    this.loadingDrivers = true;
+    this.svc.listDrivers()
+      .pipe(finalize(() => (this.loadingDrivers = false)))
+      .subscribe({
+        next: (list) => (this.drivers = this.normalizeDrivers(list)),
+        error: () => { this.errorMsg = 'Could not load drivers.'; this.drivers = []; }
+      });
+  }
+
+  private normalizeDrivers(list: Driver[] = []): { id: number; name: string }[] {
+    return (list || [])
+      .map((d: Driver | any) => {
+        const id = d?.id ?? d?.driver_id;
+        const name = (d?.name ?? [d?.first_name, d?.last_name].filter(Boolean).join(' ')).trim();
+        return { id, name: name || 'Unnamed' };
+      })
+      .filter(d => d.id != null);
+  }
+
+  filteredDrivers(): { id: number; name: string }[] {
+    const q = this.driverQuery.trim().toLowerCase();
+    return !q ? this.drivers : this.drivers.filter(d => d.name.toLowerCase().includes(q));
+  }
 
   save(): void {
     this.errorMsg = '';
     this.successMsg = '';
 
-    const { weekStart, weekEnd, driverName } = this.form.getRawValue();
+    const { weekStart, weekEnd, driverId } = this.form.getRawValue();
 
     if (!weekStart || !weekEnd) {
       this.errorMsg = 'Please select a week range.';
@@ -40,45 +73,34 @@ export class CreatePayReportComponent {
       this.errorMsg = 'End date must be on or after start date.';
       return;
     }
+    if (!driverId) {
+      this.errorMsg = 'Please select a driver.';
+      return;
+    }
 
     this.saving = true;
-    console.log('[CreateReport] payload', { weekStart, weekEnd, driverName });
-
-    this.svc.createReportResponse({ weekStart, weekEnd, driverName: driverName || undefined })
-      .pipe(finalize(() => this.saving = false))
+    this.svc.createReportResponse({ weekStart, weekEnd, driverId })
+      .pipe(finalize(() => (this.saving = false)))
       .subscribe({
         next: (resp) => {
-          // Support both: body with id, or 201 Created with Location header
-          const body: any = resp.body;
-          let id = body?.id as number | undefined;
-
+          let id = resp.body?.id as number | undefined;
           if (!id) {
             const loc = resp.headers.get('Location') || resp.headers.get('location');
-            if (loc) {
-              // Expect server to return like /api/pay-reports/123
-              const m = loc.match(/\/pay-reports\/(\d+)/i);
-              id = m ? Number(m[1]) : undefined;
-            }
+            id = loc?.match(/\/pay-reports\/(\d+)/i)?.[1] ? Number(RegExp.$1) : undefined;
           }
-
           if (!id) {
             this.errorMsg = 'Report created but no ID returned. Please refresh the list.';
-            console.warn('[CreateReport] Missing id in response', resp);
             return;
           }
-
           this.successMsg = 'Report created.';
-          console.log('[CreateReport] navigating to', id);
           this.router.navigate(['/pay-reports', id]);
         },
         error: (err) => {
           console.error('[CreateReport] error', err);
-          this.errorMsg = (err?.error?.message) || 'Unable to create report. Please try again.';
+          this.errorMsg = err?.error?.message || 'Unable to create report. Please try again.';
         }
       });
   }
 
-  cancel(): void {
-    this.router.navigate(['/pay-reports']);
-  }
+  cancel(): void { this.router.navigate(['/pay-reports']); }
 }

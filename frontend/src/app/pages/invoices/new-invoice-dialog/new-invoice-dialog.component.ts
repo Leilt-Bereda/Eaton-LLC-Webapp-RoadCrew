@@ -6,7 +6,8 @@ import { FormsModule } from '@angular/forms';
 export interface NewInvoiceResult {
   customerId: number;
   jobId: number;
-  date: string; // YYYY-MM-DD
+  startDate: string; // YYYY-MM-DD
+  endDate: string; // YYYY-MM-DD (week range)
 }
 
 export interface DialogCustomer {
@@ -35,13 +36,15 @@ export class NewInvoiceDialogComponent {
 
   @Output() cancel = new EventEmitter<void>();
   @Output() save = new EventEmitter<NewInvoiceResult>();
+  @Output() customerChange = new EventEmitter<number | null>();
 
   // UI state
   customerQuery = '';
   jobQuery = '';
   selectedCustomerId: number | null = null;
   selectedJobId: number | null = null;
-  date = this.today();
+  startDate = this.today();
+  endDate = this.getWeekEndDate(this.today());
 
   // filter helpers
   filteredCustomers(): DialogCustomer[] {
@@ -65,15 +68,22 @@ export class NewInvoiceDialogComponent {
     // reset job selection + query when customer changes
     this.selectedJobId = null;
     this.jobQuery = '';
+    // Emit customer change event so parent can reload jobs for this customer
+    this.customerChange.emit(this.selectedCustomerId);
   }
 
   canSave(): boolean {
-    return this.selectedCustomerId != null && this.selectedJobId != null && !!this.date;
+    return this.selectedCustomerId != null && this.selectedJobId != null && !!this.startDate && !!this.endDate;
   }
 
   doSave() {
     if (!this.canSave() || this.selectedCustomerId == null || this.selectedJobId == null) return;
-    this.save.emit({ customerId: this.selectedCustomerId, jobId: this.selectedJobId, date: this.date });
+    this.save.emit({ 
+      customerId: this.selectedCustomerId, 
+      jobId: this.selectedJobId, 
+      startDate: this.startDate,
+      endDate: this.endDate
+    });
   }
 
   today(): string {
@@ -81,5 +91,19 @@ export class NewInvoiceDialogComponent {
     const mm = String(d.getMonth() + 1).padStart(2, '0');
     const dd = String(d.getDate()).padStart(2, '0');
     return `${d.getFullYear()}-${mm}-${dd}`;
+  }
+
+  getWeekEndDate(startDateStr: string): string {
+    const startDate = new Date(startDateStr);
+    const endDate = new Date(startDate);
+    endDate.setDate(endDate.getDate() + 6); // Add 6 days to get end of week (7 days total)
+    const mm = String(endDate.getMonth() + 1).padStart(2, '0');
+    const dd = String(endDate.getDate()).padStart(2, '0');
+    return `${endDate.getFullYear()}-${mm}-${dd}`;
+  }
+
+  onStartDateChange() {
+    // Automatically update end date when start date changes (week range)
+    this.endDate = this.getWeekEndDate(this.startDate);
   }
 }

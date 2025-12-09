@@ -10,9 +10,9 @@ from django.utils.dateparse import parse_date
 from datetime import timedelta
 from decimal import Decimal
 from django.utils import timezone
-
-
-
+from .serializers import RequestOTPSerializer, VerifyOTPSerializer, ResetPasswordSerializer
+from .models import PasswordOTP
+from .emails import send_password_otp_email
 from django.contrib.auth import get_user_model
 from .models import (
     Job, Customer, Driver, Role, UserRole, Comment, Truck, DriverTruckAssignment, Operator, Address, JobDriverAssignment,Invoice, InvoiceLine,PayReport, PayReportLine
@@ -334,6 +334,59 @@ class PayReportLineViewSet(viewsets.ModelViewSet):
             qs = qs.filter(job_id=job_id)
         return qs
 
+    def perform_create(self, serializer):
+        line = serializer.save()
+        if line.report:
+            line.report.recalc_from_lines()
+
     def perform_update(self, serializer):
         line = serializer.save()  # model.save() recomputes totals
         line.report.recalc_from_lines()
+
+def _recent_otp_count(user, minutes=15):
+    since = timezone.now() - timedelta(minutes=minutes)
+    return PasswordOTP.objects.filter(user=user, created_at__gte=since, purpose="password_reset").count()
+
+class AuthViewSet(viewsets.ViewSet):
+    permission_classes = [permissions.AllowAny]
+
+    @action(detail=False, methods=["post"], url_path="password-reset")
+    def request_password_otp(self, request):
+        s = RequestOTPSerializer(data=request.data); s.is_valid(raise_exception=True)
+        email = s.validated_data["email"].strip().lower()
+        user = User.objects.filter(email__iexact=email).first()
+        if user and _recent_otp_count(user) < 3:
+            PasswordOTP.objects.filter(user=user, used=False, purpose="password_reset").update(used=True)
+            otp, code = PasswordOTP.create_for_user(user, ttl_minutes=10)
+            email_sent = send_password_otp_email(email, code, minutes=10)
+            if not email_sent:
+                return Response({"error": "Failed to send email. Please try again later."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        # Always return success to prevent email enumeration
+        return Response({"ok": True, "message": "If an account exists with this email, a password reset code has been sent."})
+
+    @action(detail=False, methods=["post"], url_path="password-reset/verify")
+    def verify_password_otp(self, request):
+        s = VerifyOTPSerializer(data=request.data); s.is_valid(raise_exception=True)
+        email, code = s.validated_data["email"].lower(), s.validated_data["code"]
+        user = User.objects.filter(email__iexact=email).first()
+        if not user: return Response({"valid": False})
+        otp = (PasswordOTP.objects
+               .filter(user=user, purpose="password_reset", used=False)
+               .order_by("-created_at").first())
+        if otp and otp.verify(code): return Response({"valid": True})
+        return Response({"valid": False})
+
+    @action(detail=False, methods=["post"], url_path="password-reset/confirm")
+    def reset_password_with_otp(self, request):
+        s = ResetPasswordSerializer(data=request.data); s.is_valid(raise_exception=True)
+        email, code, new_pw = s.validated_data["email"].lower(), s.validated_data["code"], s.validated_data["new_password"]
+        user = User.objects.filter(email__iexact=email).first()
+        if not user: return Response({"ok": True})
+        otp = (PasswordOTP.objects
+               .filter(user=user, purpose="password_reset", used=False)
+               .order_by("-created_at").first())
+        if not (otp and otp.verify(code)):
+            from rest_framework import status
+            return Response({"detail": "Invalid or expired code."}, status=status.HTTP_400_BAD_REQUEST)
+        user.set_password(new_pw); user.save(update_fields=["password"])
+        return Response({"ok": True})

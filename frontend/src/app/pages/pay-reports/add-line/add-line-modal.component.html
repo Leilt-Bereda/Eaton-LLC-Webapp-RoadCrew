@@ -1,102 +1,137 @@
-<!-- src/app/pages/open-pay-report/add-line-modal.component.html -->
-<div class="modal-backdrop" *ngIf="open"></div>
-<div class="modal d-block" tabindex="-1" role="dialog" *ngIf="open">
-  <div class="modal-dialog" role="document">
-    <div class="modal-content">
+<div class="modal-backdrop" *ngIf="open" (click)="close()"></div>
 
-      <div class="modal-header">
+<div class="modal-card" *ngIf="open" role="dialog" aria-modal="true" aria-label="Add report line">
+  <div class="modal-header-blue">
         <h5 class="modal-title">Add report line</h5>
-        <button type="button" class="btn-close" (click)="close()"></button>
+    <button type="button" class="btn-close-white" aria-label="Close" (click)="close()">
+      <span class="close-x"></span>
+    </button>
       </div>
 
       <form [formGroup]="form" (ngSubmit)="save()">
         <div class="modal-body">
-          <div class="mb-3">
+      <div class="form-group">
             <label class="form-label">Week</label>
-            <div class="form-text">{{ weekStart }} → {{ weekEnd }}</div>
+            <div class="form-text fw-semibold">{{ weekStart }} → {{ weekEnd }}</div>
           </div>
 
-          <div class="mb-3">
-            <label class="form-label">Date</label>
-            <input type="date" class="form-control" formControlName="date" />
-          </div>
+      <div class="form-group position-relative">
+      <label class="form-label">Job # (type to search)</label>
+      <input type="text"
+            class="form-control"
+            formControlName="jobNumber"
+            (focus)="showSuggestions = suggestions.length > 0"
+            (blur)="onJobFieldBlur()"
+            placeholder="Start typing job #, project, or material...">
 
-          <div class="mb-3">
-            <label class="form-label">Driver Name</label>
-            <input type="text" class="form-control" formControlName="driverName" />
+      <!-- suggestions dropdown -->
+      <div *ngIf="showSuggestions"
+          class="list-group position-absolute w-100 shadow-sm"
+          style="z-index: 1000; max-height: 14rem; overflow-y: auto;">
+        <button type="button"
+                class="list-group-item list-group-item-action d-flex flex-column align-items-start"
+                *ngFor="let j of suggestions; trackBy: trackByJobId"
+                (mousedown)="$event.preventDefault()"
+                (click)="pickSuggestion(j)">
+          <div class="fw-semibold">{{ j.job_number }}</div>
+          <div class="small text-muted text-truncate">{{ j.project }}</div>
+          <div class="small text-muted">
+            <span *ngIf="j.loading_address_info?.location_name">{{ j.loading_address_info.location_name }}</span>
+            <span *ngIf="!j.loading_address_info?.location_name && j.loading_address_info?.street_address">
+              {{ j.loading_address_info.street_address }}, {{ j.loading_address_info.city }}
+            </span>
+            <span class="mx-1">→</span>
+            <span *ngIf="j.unloading_address_info?.location_name">{{ j.unloading_address_info.location_name }}</span>
+            <span *ngIf="!j.unloading_address_info?.location_name && j.unloading_address_info?.street_address">
+              {{ j.unloading_address_info.street_address }}, {{ j.unloading_address_info.city }}
+            </span>
           </div>
+        </button>
+      </div>
 
-          <div class="mb-3">
-            <label class="form-label">Job #</label>
-            <input type="text" class="form-control" formControlName="jobNumber" />
-            <div class="form-text" *ngIf="jobLoading">Looking up job…</div>
-            <div class="text-danger small" *ngIf="jobError">{{ jobError }}</div>
-          </div>
+      <div class="form-text text-danger" *ngIf="jobError">{{ jobError }}</div>
+    </div>
 
-          <div class="mb-3">
+      <div class="form-group">
             <label class="form-label">Truck #</label>
             <input type="text" class="form-control" formControlName="truckNumber" />
           </div>
 
-          <div class="mb-3">
+      <div class="form-group">
             <label class="form-label">Trailer #</label>
             <input type="text" class="form-control" formControlName="trailerNumber" />
+            <div class="form-text text-danger" *ngIf="form.controls.trailerNumber.touched && form.controls.trailerNumber.invalid">Required</div>
           </div>
 
-          <!-- Auto-filled/adjustable fields -->
-          <div class="mb-3">
+      <div class="form-group">
             <label class="form-label">Loaded</label>
             <input type="text" class="form-control" formControlName="loaded" />
+            <div class="form-text text-danger" *ngIf="form.controls.loaded.touched && form.controls.loaded.invalid">Required</div>
           </div>
 
-          <div class="mb-3">
-            <label class="form-label">Unload</label>
+      <div class="form-group">
+            <label class="form-label">Unloaded</label>
             <input type="text" class="form-control" formControlName="unloaded" />
+            <div class="form-text text-danger" *ngIf="form.controls.unloaded.touched && form.controls.unloaded.invalid">Required</div>
           </div>
 
           <div class="row">
-            <div class="col-md-4 mb-3">
+        <div class="col-md-4">
+          <div class="form-group">
               <label class="form-label">Weight/Hour</label>
               <input type="number" step="0.01" class="form-control" formControlName="weightOrHour" />
             </div>
-            <div class="col-md-4 mb-3">
+        </div>
+        <div class="col-md-4">
+          <div class="form-group">
               <label class="form-label">Truck Paid</label>
               <input type="number" step="0.01" class="form-control" formControlName="truckPaid" />
             </div>
-            <div class="col-md-4 mb-3">
+        </div>
+        <div class="col-md-4">
+          <div class="form-group">
               <label class="form-label">Total</label>
               <input type="number" step="0.01" class="form-control" formControlName="total" />
+          </div>
             </div>
           </div>
 
           <div class="row">
-            <div class="col-md-4 mb-3">
+        <div class="col-md-4">
+          <div class="form-group">
               <label class="form-label">Trailer Rent</label>
               <input type="number" step="0.01" class="form-control" formControlName="trailerRent" />
             </div>
-            <div class="col-md-4 mb-3">
+        </div>
+        <div class="col-md-4">
+          <div class="form-group">
               <label class="form-label">Broker Charge</label>
               <input type="number" step="0.01" class="form-control" formControlName="brokerCharge" />
             </div>
-            <div class="col-md-4 mb-3">
+        </div>
+        <div class="col-md-4">
+          <div class="form-group">
               <label class="form-label">Contractor Paid</label>
               <input type="number" step="0.01" class="form-control" formControlName="contractorPaid" />
-            </div>
-          </div>
-
-          <div class="text-muted small">
-            Values were prefilled from Job #. You can override before saving.
           </div>
         </div>
+      </div>
 
-        <div class="modal-footer">
-          <button type="button" class="btn btn-outline-secondary" (click)="close()">Cancel</button>
-          <button type="submit" class="btn btn-primary" [disabled]="form.invalid || saving">
-            {{ saving ? 'Saving…' : 'Save' }}
-          </button>
-        </div>
-      </form>
-
+      <div class="text-muted small">
+        Values were prefilled from Job #. You can override before saving.
+      </div>
     </div>
-  </div>
+
+    <div class="modal-footer">
+      <button type="button" class="btn btn-outline-secondary" (click)="close()">Cancel</button>
+      <div class="d-flex flex-column flex-md-row gap-2 w-100">
+        <button type="button" class="btn btn-outline-primary flex-fill" [disabled]="form.invalid || saving" (click)="createAndReturn()">
+          {{ saving ? 'Saving…' : 'Create & View Report' }}
+        </button>
+        <button type="submit" class="btn btn-primary flex-fill" [disabled]="form.invalid || saving">
+          {{ saving ? 'Saving…' : 'Save Line' }}
+        </button>
+      </div>
+    </div>
+  </form>
 </div>

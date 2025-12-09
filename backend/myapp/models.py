@@ -7,6 +7,11 @@ from decimal import Decimal
 from django.utils import timezone
 from django.db.models.signals import post_save, post_delete
 from django.dispatch import receiver
+import hashlib, secrets, string
+from django.conf import settings
+from django.db import models
+from django.utils import timezone
+from datetime import timedelta
 '''
 user = models.ForeignKey(User, on_delete=models.CASCADE)
 '''
@@ -177,9 +182,6 @@ class Address(models.Model):
 
     def __str__(self):
         return f"{self.street_address}, {self.city}"
-
-
-
 class Comment(models.Model):
     job = models.ForeignKey(Job, on_delete=models.CASCADE, related_name='comments')
     comment_text = models.TextField()
@@ -207,6 +209,8 @@ class Invoice(models.Model):
     job        = models.ForeignKey('Job', on_delete=models.PROTECT, related_name='invoices')
     invoice_no = models.CharField(max_length=32, unique=True, editable=False)
     invoice_date = models.DateField(default=timezone.now)
+    start_date = models.DateField(null=True, blank=True, help_text="Start of the invoice period (week range)")
+    end_date = models.DateField(null=True, blank=True, help_text="End of the invoice period (week range)")
     status       = models.CharField(max_length=16, choices=STATUS_CHOICES, default='Draft')
     total_amount = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0.00'))
 
@@ -279,7 +283,11 @@ class PayReport(models.Model):
             models.CheckConstraint(
                 check=models.Q(week_end__gte=models.F('week_start')),
                 name='pr_week_start_lte_end'
-            )
+            ),
+            models.UniqueConstraint(
+                fields=('driver', 'week_start', 'week_end'),
+                name='uniq_payreport_driver_week',
+            ),
         ]
         indexes = [  
             models.Index(fields=['driver', 'week_start', 'week_end'], name='pr_driver_week_idx'),
@@ -352,3 +360,41 @@ class PayReportLine(models.Model):
     def save(self, *args, **kwargs):
         self.compute_amounts()
         super().save(*args, **kwargs)
+class PasswordOTP(models.Model):
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="password_otps")
+    code_hash = models.CharField(max_length=64, db_index=True)  # sha256 hex
+    salt = models.CharField(max_length=16)
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField()
+    attempts = models.PositiveSmallIntegerField(default=0)
+    used = models.BooleanField(default=False)
+    purpose = models.CharField(max_length=32, default="password_reset")
+
+    class Meta:
+        indexes = [models.Index(fields=["user", "created_at"])]
+
+    @staticmethod
+    def _hash(code: str, salt: str) -> str:
+        return hashlib.sha256((salt + code).encode()).hexdigest()
+
+    @classmethod
+    def create_for_user(cls, user, ttl_minutes=10, length=6):
+        code = "".join(secrets.choice(string.digits) for _ in range(length))
+        salt = secrets.token_hex(4)
+        otp = cls.objects.create(
+            user=user,
+            code_hash=cls._hash(code, salt),
+            salt=salt,
+            expires_at=timezone.now() + timedelta(minutes=ttl_minutes),
+        )
+        return otp, code  # return plaintext once to email it
+
+    def verify(self, code: str, max_attempts=5) -> bool:
+        if self.used or timezone.now() > self.expires_at or self.attempts >= max_attempts:
+            return False
+        self.attempts += 1
+        ok = self.code_hash == self._hash(code, self.salt)
+        if ok:
+            self.used = True
+        self.save(update_fields=["attempts", "used"])
+        return ok

@@ -9,6 +9,7 @@ export const environment = {
   production: false,
   apiBaseUrl: 'http://localhost:8000/api/',
   googleMapsKey: ''
+
 };
 /*
  * For easier debugging in development mode, you can import the following file

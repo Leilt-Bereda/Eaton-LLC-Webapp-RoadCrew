@@ -1,7 +1,7 @@
 import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router } from '@angular/router';
-import { FormBuilder, FormGroup, FormArray, Validators, ReactiveFormsModule } from '@angular/forms';
+import { FormBuilder, FormGroup, FormArray, Validators, ReactiveFormsModule, FormControl } from '@angular/forms';
 import { CdkStepperModule } from '@angular/cdk/stepper';
 import { NgStepperModule } from 'angular-ng-stepper';
 import { AddressService } from 'src/app/services/address.service';
@@ -19,16 +19,20 @@ import Swal from 'sweetalert2';
 export class CreateJobComponent implements OnInit {
   jobForm: FormGroup;
 
+  // Form groups for each step 
+  step1FormGroup!: FormGroup;
+  step2FormGroup!: FormGroup;
+  step3FormGroup!: FormGroup;
+  step4FormGroup!: FormGroup;
+
   isOtherContractor = false;
   isOtherContractorProjectNumber = false;
   isPrevailing = false;
   isAASHTOWare = false;
 
-  // Prime contractor dropdown - now populated from database
   primeContractors: string[] = [];
   filteredPrimeContractors: string[] = [];
 
-  // Invoiced contractor dropdown - now populated from database
   invoicedContractors: string[] = [];
   filteredInvoicedContractors: string[] = [];
 
@@ -85,6 +89,7 @@ export class CreateJobComponent implements OnInit {
     private customerService: CustomerService
   ) {
     this.jobForm = this.createForm();
+    this.createStepFormGroups(); // NEW METHOD
     this.setupFormListeners();
   }
 
@@ -99,6 +104,36 @@ export class CreateJobComponent implements OnInit {
 
   get isBackhaulEnabled(): boolean {
     return this.jobForm.get('isBackhaulEnabled')?.value;
+  }
+
+  // NEW METHOD: Create separate FormGroups for each step
+  private createStepFormGroups(): void {
+    // Step 1: Project Details
+    this.step1FormGroup = this.fb.group({
+      project: this.jobForm.get('project'),
+      primeContractor: this.jobForm.get('primeContractor'),
+      primeContractorProjectNumber: this.jobForm.get('primeContractorProjectNumber'),
+      contractorInvoice: this.jobForm.get('contractorInvoice'),
+      contractorInvoiceProjectNumber: this.jobForm.get('contractorInvoiceProjectNumber'),
+      prevailingOrNot: this.jobForm.get('prevailingOrNot')
+    });
+
+    // Step 2: Job Rate & Material
+    this.step2FormGroup = this.fb.group({
+      jobDescription: this.jobForm.get('jobDescription'),
+      jobNumber: this.jobForm.get('jobNumber'),
+      material: this.jobForm.get('material')
+    });
+
+    // Step 3: Loading & Unloading (no required fields, so use empty FormGroup)
+    this.step3FormGroup = this.fb.group({
+      placeholder: new FormControl('') // Dummy control to make stepper work
+    });
+
+    // Step 4: Additional Notes (no required fields)
+    this.step4FormGroup = this.fb.group({
+      placeholder: new FormControl('')
+    });
   }
 
   private createForm(): FormGroup {
@@ -192,7 +227,6 @@ export class CreateJobComponent implements OnInit {
   }
 
   private setupFormListeners(): void {
-    // Prime contractor search - show all options if field is focused and empty
     this.jobForm.get('primeContractor')?.valueChanges.subscribe(value => {
       if (value && value.trim().length > 0) {
         this.filteredPrimeContractors = this.primeContractors.filter(contractor =>
@@ -205,7 +239,6 @@ export class CreateJobComponent implements OnInit {
       }
     });
 
-    // Invoiced contractor search
     this.jobForm.get('contractorInvoice')?.valueChanges.subscribe(value => {
       if (value && value.trim().length > 0) {
         this.filteredInvoicedContractors = this.invoicedContractors.filter(contractor =>
@@ -229,6 +262,8 @@ export class CreateJobComponent implements OnInit {
       
       if (this.isPrevailing) {
         prevailingTypeControl?.setValidators(Validators.required);
+        // Add prevailingType to step1FormGroup validation dynamically
+        this.step1FormGroup.addControl('prevailingType', prevailingTypeControl as FormControl);
         if (this.classCodes.length === 0) {
           ['602', '604', '607'].forEach(code => this.addClassCode(code));
         }
@@ -236,6 +271,8 @@ export class CreateJobComponent implements OnInit {
         prevailingTypeControl?.clearValidators();
         this.jobForm.patchValue({ prevailingType: '' });
         this.isAASHTOWare = false;
+        // Remove prevailingType from step1FormGroup validation
+        this.step1FormGroup.removeControl('prevailingType');
         while (this.classCodes.length > 0) {
           this.classCodes.removeAt(0);
         }
@@ -299,13 +336,10 @@ export class CreateJobComponent implements OnInit {
   private fetchCustomers(): void {
     this.customerService.getCustomers().subscribe({
       next: customers => {
-        // Extract customer names - adjust property name based on your customer model
-        // Common options: 'name', 'company_name', 'customer_name', 'business_name'
         this.primeContractors = customers.map(c => 
           c.name || c.company_name || c.customer_name || c.business_name
-        ).filter(name => name); // Filter out any undefined/null values
+        ).filter(name => name);
         
-        // Use same list for invoiced contractors
         this.invoicedContractors = [...this.primeContractors];
       },
       error: err => console.error('Failed to fetch customers:', err)
@@ -541,28 +575,29 @@ export class CreateJobComponent implements OnInit {
     });
   }
 
+  // UPDATED METHOD: Simplified - let stepControl handle validation
   nextStep(stepper: any): void {
     const currentStepIndex = stepper.selectedIndex;
     
-    const stepRequiredFields: { [key: number]: string[] } = {
-      0: ['project', 'primeContractor', 'primeContractorProjectNumber', 'contractorInvoice', 'contractorInvoiceProjectNumber', 'prevailingOrNot', ...(this.isPrevailing ? ['prevailingType'] : [])],
-      1: ['jobDescription', 'jobNumber', 'material'],
-      2: [],
-      3: []
-    };
+    // Get the current step's FormGroup
+    let currentStepForm: FormGroup | null = null;
+    switch(currentStepIndex) {
+      case 0:
+        currentStepForm = this.step1FormGroup;
+        break;
+      case 1:
+        currentStepForm = this.step2FormGroup;
+        break;
+      case 2:
+        currentStepForm = this.step3FormGroup;
+        break;
+      case 3:
+        currentStepForm = this.step4FormGroup;
+        break;
+    }
 
-    const fieldsToValidate = stepRequiredFields[currentStepIndex] || [];
-    const invalidFields = fieldsToValidate.filter(fieldName => {
-      const control = this.jobForm.get(fieldName);
-      return control?.invalid;
-    });
-
-    if (invalidFields.length > 0) {
-      fieldsToValidate.forEach(fieldName => {
-        const control = this.jobForm.get(fieldName);
-        control?.markAsTouched();
-      });
-
+    if (currentStepForm && currentStepForm.invalid) {
+      currentStepForm.markAllAsTouched();
       Swal.fire({
         icon: 'error',
         title: 'Missing Required Fields',

@@ -16,7 +16,6 @@ export class DispatchDialogComponent {
   selectedJob: any = null;
   selectedDriver: string = '';
   selectedTruck: string = '';
-  Weight: string = ''; 
   selectedDate: string = '';
   selectedTime: string = '';
 
@@ -50,7 +49,6 @@ export class DispatchDialogComponent {
       job: this.selectedJob,
       driver: this.selectedDriver,
       truck: this.selectedTruck,
-      weight: this.Weight,
       date: this.selectedDate,
       time: this.selectedTime
     };

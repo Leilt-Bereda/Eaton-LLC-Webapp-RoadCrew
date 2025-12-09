@@ -2,10 +2,11 @@
   <h2>Job Creator</h2>
 
   <form [formGroup]="jobForm">
+    <!-- CRITICAL CHANGE: Keep [linear]="true" and add [stepControl] to each step -->
     <ng-stepper #cdkStepper [linear]="true" class="custom-stepper">
 
-      <!-- Step 1: Project Details -->
-      <cdk-step>
+      <!-- Step 1: Project Details - ADD [stepControl]="step1FormGroup" -->
+      <cdk-step [stepControl]="step1FormGroup">
         <ng-template cdkStepLabel>
           <div class="step-bullet">1</div>
           <div class="step-title">Project Details</div>
@@ -159,8 +160,8 @@
         </div>
       </cdk-step>
 
-      <!-- Step 2: Job Rate & Material -->
-      <cdk-step>
+      <!-- Step 2: Job Rate & Material - ADD [stepControl]="step2FormGroup" -->
+      <cdk-step [stepControl]="step2FormGroup">
         <ng-template cdkStepLabel>
           <div class="step-bullet">2</div>
           <div class="step-title">Job Rate & Material</div>
@@ -198,8 +199,8 @@
         </div>
       </cdk-step>
 
-      <!-- Step 3: Loading & Unloading -->
-      <cdk-step>
+      <!-- Step 3: Loading & Unloading - ADD [stepControl]="step3FormGroup" -->
+      <cdk-step [stepControl]="step3FormGroup">
         <ng-template cdkStepLabel>
           <div class="step-bullet">3</div>
           <div class="step-title">Loading & Unloading</div>
@@ -444,14 +445,6 @@
             </div>
           </div>
 
-        </div>
-
-        <div class="stepper-buttons">
-          <button type="button" cdkStepperPrevious class="btn btn-secondary">← Previous</button>
-          <button type="button" (click)="nextStep(cdkStepper)" class="btn btn-primary">Next →</button>
-        </div>
-      </cdk-step>
-
           <div class="form-group">
             <label>Job Date</label>
             <input type="date" formControlName="jobDate" class="form-control">
@@ -472,17 +465,18 @@
             <input type="text" formControlName="jobForemanContact" class="form-control" placeholder="Enter Job Foreman Contact Number">
           </div>
 
+        </div>
 
         <div class="stepper-buttons">
           <button type="button" cdkStepperPrevious class="btn btn-secondary">← Previous</button>
-          <button type="button" cdkStepperNext class="btn btn-primary">Next →</button>
+          <button type="button" (click)="nextStep(cdkStepper)" class="btn btn-primary">Next →</button>
         </div>
-      
+      </cdk-step>
 
-      <!-- Step 5: Additional Notes -->
-      <cdk-step>
+      <!-- Step 4: Additional Notes - ADD [stepControl]="step4FormGroup" -->
+      <cdk-step [stepControl]="step4FormGroup">
         <ng-template cdkStepLabel>
-          <div class="step-bullet">5</div>
+          <div class="step-bullet">4</div>
           <div class="step-title">Additional Notes</div>
         </ng-template>
 

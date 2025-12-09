@@ -71,33 +71,22 @@ customerForm = new FormGroup({
     } */
 
   submitCustomer() {
-    if (this.customerForm.invalid) {
-      this.customerForm.markAllAsTouched();
-      Swal.fire({
-        icon: 'error',
-        title: 'Please complete all required fields.',
-        text: 'Please fill in all required fields'
-      });
-      return;
-    }
+  if (this.customerForm.invalid) {
+    this.customerForm.markAllAsTouched();
+    Swal.fire({
+      icon: 'error',
+      title: 'Missing Fields',
+      text: 'Please fill out all required fields before submitting.',
+    });
+    return;
+  }
 
-    // Otherwise valid form
-      console.log('Customer Submitted:', this.customerForm.value);
-      Swal.fire({
-        icon: 'success',
-        title: 'Customer submitted successfully!',
-        text: 'The customer has been created'
-      });
-      return;   
-    }
-
-    
-
-  /* const formData = this.customerForm.value;
+  const formData = this.customerForm.value;
   const payload = {
     company_name: formData.companyName,
     company_address: formData.companyAddress,
-    company_phone: formData.companyPhone,
+    phone_number: formData.companyPhone,  // Changed from company_phone
+    email: formData.companyDispatchContactEmail,  // Added this required field
 
     // Dispatch Contact
     company_dispatch_contact: formData.companyDispatchContact,
@@ -122,37 +111,25 @@ customerForm = new FormGroup({
     additional_comments: formData.notes
   };
 
-  console.log("Submitting customer payload:", payload); */
-
-  // Then send to your backend service
-  // this.customerService.createCustomer(payload).subscribe(...)
-
-
-    /* this.customerService.createCustomer(payload).subscribe({
-      next: () => {
-        Swal.fire({
-          icon: 'success',
-          title: 'Customer Created',
-          text: 'Customer has been successfully added 🎉',
-          toast: true,
-          position: 'bottom-end',
-          timer: 3000,
-          showConfirmButton: false
-        });
-        this.router.navigate(['/jobs']);
-      },
-      error: (err) => {
-        Swal.fire({
-          icon: 'error',
-          title: 'Oops...',
-          text: 'Failed to create customer 😢',
-          toast: true,
-          position: 'bottom-end',
-          timer: 3000,
-          showConfirmButton: false
-        });
-        console.error(err);
-      }
-    });
-  } */
+  this.customerService.createCustomer(payload).subscribe({
+    next: () => {
+      Swal.fire({
+        icon: 'success',
+        title: 'Customer Created',
+        text: 'Customer has been successfully added!',
+      }).then(() => {
+        this.router.navigate(['/customers']);
+      });
+    },
+    error: (err) => {
+      console.error('Failed to create customer:', err);
+      console.error('Error details:', err.error);  // This will show us what Django says
+      Swal.fire({
+        icon: 'error',
+        title: 'Failed to Create Customer',
+        text: 'Please check your input and try again.',
+      });
+    }
+  });
+}
 }

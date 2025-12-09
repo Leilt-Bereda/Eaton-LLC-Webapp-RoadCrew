@@ -85,3 +85,7 @@ frontend/node_modules/
 .env
 .env.local
 .env.*.local
+venv/
+backend/venv/
+**/__pycache__/
+*.pyc

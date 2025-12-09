@@ -90,6 +90,7 @@ load_dotenv(BASE_DIR.parent.parent / ".env")
 load_dotenv(BASE_DIR.parent / ".env")
 
 
+
 DATABASES = {
   "default": dj_database_url.config(env="DATABASE_URL", conn_max_age=600, ssl_require=True)
 }

@@ -42,6 +42,8 @@ export const routes: Routes = [
       { path: 'fleet', loadComponent: () => import('./pages/fleet/fleet.component').then(c => c.FleetComponent) },
       { path: 'customers', loadComponent: () => import('./pages/customer/customer.component').then(c => c.CustomerComponent) },
       { path: 'customers/create', loadComponent: () => import('./pages/customer/create-customer/create-customer.component').then(c => c.CreateCustomerComponent) },
+      { path: 'customers/view/:id', loadComponent: () => import('./pages/customer/view-customer/view-customer.component').then(c => c.ViewCustomerComponent) },
+      { path: 'customers/edit/:id', loadComponent: () => import('./pages/customer/edit-customer/edit-customer.component').then(c => c.EditCustomerComponent) },
       { path: 'daily-board', loadComponent: () => import('./pages/daily-board/daily-board.component').then(c => c.DailyBoardComponent) },
       { path: 'dispatch', loadComponent: () => import('./pages/dispatch/dispatch.component').then(c => c.DispatchComponent) },
       { path: 'pay-reports',      loadComponent: () => import('./pages/pay-reports/pay-reports.component').then(c => c.PayReportsComponent) },

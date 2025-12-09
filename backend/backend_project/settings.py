@@ -12,8 +12,10 @@ https://docs.djangoproject.com/en/5.1/ref/settings/
 
 from pathlib import Path
 import os
+import django
 from dotenv import load_dotenv
 from datetime import timedelta
+import dj_database_url
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -83,18 +85,15 @@ WSGI_APPLICATION = 'backend_project.wsgi.application'
 
 
 
-load_dotenv()  # Load environment variables
+# Load environment variables (prefer repo root .env, then local)
+load_dotenv(BASE_DIR.parent.parent / ".env")
+load_dotenv(BASE_DIR.parent / ".env")
+
 
 DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.postgresql',
-        'NAME': os.getenv('POSTGRES_DB'),  # No default value
-        'USER': os.getenv('POSTGRES_USER'),
-        'PASSWORD': os.getenv('POSTGRES_PASSWORD'),
-        'HOST': os.getenv('POSTGRES_HOST'),
-        'PORT': os.getenv('POSTGRES_PORT'),
-    }
+  "default": dj_database_url.config(env="DATABASE_URL", conn_max_age=600, ssl_require=True)
 }
+
 
 
 
@@ -168,3 +167,31 @@ SIMPLE_JWT = {
     'ALGORITHM': 'HS256',
 }
 # AUTH_USER_MODEL = "myapp.User"
+
+# SMTP2GO Configuration
+EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
+EMAIL_HOST = os.environ.get("SMTP_HOST", "mail.smtp2go.com")
+# SMTP2GO works on 2525/587; default to 587 to avoid timeouts on some hosts, allow override
+EMAIL_PORT = int(os.environ.get("SMTP_PORT", 587))
+EMAIL_USE_TLS = True
+EMAIL_USE_SSL = False  # keep SSL off; use TLS on 587/2525
+
+# Credentials from .env file (support a few env names to avoid misconfig)
+EMAIL_HOST_USER = (
+    os.environ.get("SMTP_USERNAME")
+    or os.environ.get("SMTP_USER")
+    or os.environ.get("SMTP2GO_USERNAME")
+    or os.environ.get("EMAIL_HOST_USER")
+    or ""
+)
+EMAIL_HOST_PASSWORD = (
+    os.environ.get("SMTP_PASSWORD")
+    or os.environ.get("SMTP_PASS")
+    or os.environ.get("SMTP2GO_PASSWORD")
+    or os.environ.get("EMAIL_HOST_PASSWORD")
+    or ""
+)
+DEFAULT_FROM_EMAIL = os.environ.get("FROM_EMAIL") or EMAIL_HOST_USER or "no-reply@example.com"
+
+# Email timeout settings
+EMAIL_TIMEOUT = int(os.environ.get("EMAIL_TIMEOUT", 20))  # seconds

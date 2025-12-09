@@ -73,13 +73,13 @@ export const NavigationItems: NavigationItem[] = [
             id: 'Pay Reports',
             title: 'Pay Reports',
             type: 'item',
-            url: '/pay-report'
+            url: '/pay-reports'
           },
           {
-            id: 'End of Day Reports',
-            title: 'End of Day Reports',
+            id: 'Invoices Report',
+            title: 'Invoices Report',
             type: 'item',
-            url: '/end-of-day-report'
+            url: '/invoices-report'
           }
         ]
       }

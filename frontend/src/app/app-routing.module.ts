@@ -18,6 +18,12 @@ export const routes: Routes = [
         loadComponent: () =>
           import('./pages/authentication/login/login.component').then(m => m.LoginComponent)
       },
+      {
+        path: 'forgot-password',
+        loadComponent: () =>
+          import('./pages/authentication/forgot-password/forgot-password-request.component')
+            .then(m => m.ForgotPasswordRequestComponent)
+      },
       { path: '', pathMatch: 'full', redirectTo: 'login' }
     ]
   },
@@ -38,8 +44,11 @@ export const routes: Routes = [
       { path: 'customers/create', loadComponent: () => import('./pages/customer/create-customer/create-customer.component').then(c => c.CreateCustomerComponent) },
       { path: 'daily-board', loadComponent: () => import('./pages/daily-board/daily-board.component').then(c => c.DailyBoardComponent) },
       { path: 'dispatch', loadComponent: () => import('./pages/dispatch/dispatch.component').then(c => c.DispatchComponent) },
-      { path: 'pay-report', loadComponent: () => import('./pages/pay-report/pay-report.component').then(c => c.PayReportComponent) },
-      { path: 'end-of-day-report', loadComponent: () => import('./pages/end-of-day-report/end-of-day-report.component').then(c => c.EndOfDayReportComponent) },
+      { path: 'pay-reports/new',  loadComponent: () => import('./pages/pay-reports/create-pay-report/create-pay-report.component').then(c => c.CreatePayReportComponent) },
+      { path: 'pay-reports/:id',  loadComponent: () => import('./pages/pay-reports/open-pay-report/open-pay-report.component').then(c => c.OpenPayReportComponent) },
+      { path: 'pay-reports',      loadComponent: () => import('./pages/pay-reports/pay-reports.component').then(c => c.PayReportsComponent) },
+      { path: 'invoices-report', loadComponent: () => import('./pages/invoices/invoices-report.component').then(c => c.InvoicesReportComponent) },
+      { path: 'invoice-detail/:id', loadComponent: () => import('./pages/invoices/invoice-detail/invoice-detail.component').then(c => c.InvoiceDetailComponent) },
       { path: 'db-job-viewer/:id', component: DbJobViewerComponent },
       { path: 'job-edit/:id', component: EditJobsComponent },
     ]

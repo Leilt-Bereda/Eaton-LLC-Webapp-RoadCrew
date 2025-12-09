@@ -35,4 +35,9 @@ export class JobService {
     return this.http.put<any>(`${environment.apiBaseUrl}jobs/${id}/`, data);
   }
 
+  // Get jobs filtered by customer (through invoices)
+  getJobsByCustomer(customerId: number): Observable<any[]> {
+    return this.http.get<any[]>(`${this.apiUrl}?customer_id=${customerId}`);
+  }
+
 }

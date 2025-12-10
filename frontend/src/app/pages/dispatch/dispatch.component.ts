@@ -1,10 +1,18 @@
-
-import { Component } from '@angular/core';
+import { Component, OnDestroy, OnInit } from '@angular/core';
 import { MatDialog } from '@angular/material/dialog';
 import { DispatchDialogComponent } from './dispatch-dialog/dispatch-dialog.component';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { DatePipe } from '@angular/common';
+
+interface AssignmentRow {
+  job?: string;
+  driver?: string;
+  truck_type?: string;
+  jobDate: string;
+  time: string;
+  selected?: boolean;
+}
 
 @Component({
   selector: 'app-dispatch',
@@ -14,19 +22,52 @@ import { DatePipe } from '@angular/common';
   imports: [CommonModule, FormsModule],
   providers: [DatePipe]
 })
-export class DispatchComponent {
-  selectedDate: string;
-  assignments = [
-    { job: 'HW72', driver: 'John Doe', truck_type: 'Semi', jobDate: '2025-03-13', time: '10:30', selected: false },
-    { job: 'I-32', driver: 'Jane Doe', truck_type: 'Belly Dump', jobDate: '2025-06-25', time: '14:00', selected: false },
-    { job: 'HW73', driver: 'Alice Smith', truck_type: 'Flatbed', jobDate: '2025-03-13', time: '10:30', selected: false }
-  ];
+export class DispatchComponent implements OnInit, OnDestroy {
+  selectedDate: string; // Stores the selected date
+  assignments: AssignmentRow[] = [];
+  filteredAssignments: AssignmentRow[] = [];
+  selected: AssignmentRow[] = [];
 
-  filteredAssignments: any[] = [];
+  // Filter state
+  filters = {
+    search: '' // Search by job, driver, or truck type
+  };
 
-  constructor(private datePipe: DatePipe, public dialog: MatDialog) {
+  constructor(
+    private datePipe: DatePipe,
+    public dialog: MatDialog
+  ) {
+    // Initialize with the current date in 'yyyy-MM-dd' format
     this.selectedDate = this.datePipe.transform(new Date(), 'yyyy-MM-dd') || '';
-    this.filteredAssignments = this.filterAssignmentsByDate(this.selectedDate);
+  }
+
+  ngOnInit(): void {
+    // Load assignments from local store (replace with real data source when available)
+    this.loadAssignments();
+  }
+
+  ngOnDestroy(): void {
+    // No subscriptions to clean up currently
+  }
+
+  loadAssignments(): void {
+    this.assignments = [
+      {
+        job: 'Demo Job 1',
+        driver: 'Driver A',
+        truck_type: 'Flatbed',
+        jobDate: this.selectedDate,
+        time: '09:00'
+      },
+      {
+        job: 'Demo Job 2',
+        driver: 'Driver B',
+        truck_type: 'Tanker',
+        jobDate: this.selectedDate,
+        time: '13:30'
+      }
+    ].map(a => ({ ...a, selected: false }));
+    this.applyFilters();
   }
 
   openDialog(): void {
@@ -36,8 +77,9 @@ export class DispatchComponent {
   }
 
   toggleAllSelection(event: any) {
-    const checked = event.target.checked;
+    const checked = (event.target as HTMLInputElement).checked;
     this.assignments.forEach(assignment => assignment.selected = checked);
+    this.onSelect();
   }
 
   getFormattedDate(date: string): string {
@@ -53,10 +95,36 @@ export class DispatchComponent {
   }
 
   filterAssignments() {
-    this.filteredAssignments = this.filterAssignmentsByDate(this.selectedDate);
+    this.applyFilters();
+  }
+
+  // Apply both date and search filters
+  applyFilters(): void {
+    const searchTerm = this.filters.search.toLowerCase().trim();
+    let filtered = this.assignments;
+
+    // Apply date filter first (original functionality - DO NOT TOUCH)
+    filtered = this.filterAssignmentsByDate(this.selectedDate);
+
+    // Apply search filter
+    if (searchTerm) {
+      filtered = filtered.filter(assignment => {
+        const matchesJob = assignment.job?.toLowerCase().includes(searchTerm) || false;
+        const matchesDriver = assignment.driver?.toLowerCase().includes(searchTerm) || false;
+        const matchesTruck = assignment.truck_type?.toLowerCase().includes(searchTerm) || false;
+        return matchesJob || matchesDriver || matchesTruck;
+      });
+    }
+
+    this.filteredAssignments = filtered;
+    this.onSelect();
   }
 
   filterAssignmentsByDate(date: string) {
     return this.assignments.filter(assignment => assignment.jobDate === date);
+  }
+
+  onSelect(): void {
+    this.selected = this.filteredAssignments.filter(a => a.selected);
   }
 }

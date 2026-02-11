@@ -43,6 +43,7 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'django.contrib.postgres',
     'rest_framework',
     'rest_framework_simplejwt',
     'myapp',
@@ -91,9 +92,15 @@ load_dotenv(BASE_DIR.parent / ".env")
 
 
 
+
 DATABASES = {
-  "default": dj_database_url.config(env="DATABASE_URL", conn_max_age=600, ssl_require=True)
+  "default": dj_database_url.config(
+    env="DATABASE_URL",
+    conn_max_age=600,
+    ssl_require=os.environ.get("DATABASE_SSL_REQUIRE", "false").lower() == "true"
+  )
 }
+
 
 
 

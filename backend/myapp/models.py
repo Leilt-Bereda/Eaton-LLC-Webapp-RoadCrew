@@ -276,7 +276,7 @@ class PayReport(models.Model):
         managed = True
         constraints = [
             models.CheckConstraint(
-                check=models.Q(week_end__gte=models.F('week_start')),
+                condition=models.Q(week_end__gte=models.F('week_start')),
                 name='pr_week_start_lte_end'
             ),
             models.UniqueConstraint(

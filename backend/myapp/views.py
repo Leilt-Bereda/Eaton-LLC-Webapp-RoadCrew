@@ -1,15 +1,15 @@
 from django.http import HttpResponse
 from rest_framework import viewsets, generics, permissions, status
-from rest_framework.decorators import api_view
+from rest_framework.decorators import api_view, action, permission_classes
 from rest_framework.response import Response
 from rest_framework.permissions import AllowAny
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 from django.db.models import Q, Prefetch
-from rest_framework.decorators import action
 from django.utils.dateparse import parse_date
 from datetime import timedelta
 from decimal import Decimal
 from django.utils import timezone
+from django.core.exceptions import FieldError
 from .serializers import RequestOTPSerializer, VerifyOTPSerializer, ResetPasswordSerializer
 from .models import PasswordOTP
 from .emails import send_password_otp_email
@@ -22,6 +22,7 @@ from .serializers import (
     UserSerializer, UserRoleSerializer, CommentSerializer, TruckSerializer,
     DriverTruckAssignmentSerializer, OperatorSerializer, AddressSerializer, JobDriverAssignmentSerializer,InvoiceSerializer, InvoiceLineSerializer, PayReportSerializer, PayReportLineSerializer
 )
+from .permissions import IsDriver, IsManager, IsManagerOrDriver
 
 # For user model
 User = get_user_model()
@@ -35,9 +36,11 @@ def home(request):
 class AddressViewSet(viewsets.ModelViewSet):
     queryset = Address.objects.all()
     serializer_class = AddressSerializer
+    permission_classes = [IsManagerOrDriver]
     
 class JobViewSet(viewsets.ModelViewSet):
     serializer_class = JobSerializer
+    permission_classes = [IsManagerOrDriver]
     queryset = Job.objects.select_related(
         'prime_contractor_customer',
         'loading_address',
@@ -54,7 +57,7 @@ class JobViewSet(viewsets.ModelViewSet):
         if date:
             qs = qs.filter(job_date=date)
         if customer_id:
-            qs = qs.filter(prime_contractor_customer_id=customer_id) # adjust if your FK path differs
+            qs = qs.filter(prime_contractor_customer_id=customer_id)
         if q:
             qs = qs.filter(Q(job_number__icontains=q) | Q(project__icontains=q))
         return qs
@@ -66,10 +69,12 @@ class JobDriverAssignmentViewSet(viewsets.ModelViewSet):
                          'driver_truck__truck'
                        )
     serializer_class = JobDriverAssignmentSerializer
+    permission_classes = [IsManagerOrDriver]
     
 class CustomerViewSet(viewsets.ModelViewSet):
     queryset = Customer.objects.all().order_by('company_name')
     serializer_class = CustomerSerializer
+    permission_classes = [IsManager]
 
     def get_queryset(self):
         qs = super().get_queryset()
@@ -77,33 +82,41 @@ class CustomerViewSet(viewsets.ModelViewSet):
         if q:
             qs = qs.filter(company_name__icontains=q)
         return qs
+
 class DriverViewSet(viewsets.ModelViewSet):
     queryset = Driver.objects.all()
     serializer_class = DriverSerializer
+    permission_classes = [IsManagerOrDriver]
 
 class TruckViewSet(viewsets.ModelViewSet):
     queryset = Truck.objects.all()
     serializer_class = TruckSerializer
+    permission_classes = [IsManagerOrDriver]
 
 class RoleViewSet(viewsets.ModelViewSet):
     queryset = Role.objects.all()
     serializer_class = RoleSerializer
+    permission_classes = [IsManager]
 
 class UserViewSet(viewsets.ModelViewSet):
     queryset = User.objects.all()
     serializer_class = UserSerializer
+    permission_classes = [IsManager]
 
 class UserRoleViewSet(viewsets.ModelViewSet):
     queryset = UserRole.objects.all()
     serializer_class = UserRoleSerializer
+    permission_classes = [IsManager]
 
 class CommentViewSet(viewsets.ModelViewSet):
     queryset = Comment.objects.all()
     serializer_class = CommentSerializer
+    permission_classes = [IsManager]
 
 class DriverTruckAssignmentViewSet(viewsets.ModelViewSet):
     queryset = DriverTruckAssignment.objects.all()
     serializer_class = DriverTruckAssignmentSerializer
+    permission_classes = [IsManager]
 
 # Authentication views
 class RegisterView(generics.CreateAPIView):
@@ -114,6 +127,7 @@ class RegisterView(generics.CreateAPIView):
 class OperatorViewSet(viewsets.ModelViewSet):
     queryset = Operator.objects.all()
     serializer_class = OperatorSerializer
+    permission_classes = [IsManager]
 
 class CustomTokenObtainPairView(TokenObtainPairView):
     pass
@@ -123,11 +137,13 @@ class CustomTokenRefreshView(TokenRefreshView):
 
 # Protected test endpoint
 @api_view(["GET"])
+@permission_classes([IsManagerOrDriver])
 def protected_view(request):
     return Response({"message": "This is a protected view!"}, status=status.HTTP_200_OK)
 
 # API: Assign a truck to a driver
 @api_view(["POST"])
+@permission_classes([IsManager])
 def assign_truck_to_driver(request):
     driver_id = request.data.get('driver_id')
     truck_id = request.data.get('truck_id')
@@ -147,6 +163,7 @@ def assign_truck_to_driver(request):
 
 # API: Show all drivers and trucks
 @api_view(["GET"])
+@permission_classes([IsManager])
 def drivers_and_trucks(request):
     drivers = Driver.objects.all()
     trucks = Truck.objects.all()
@@ -158,6 +175,7 @@ def drivers_and_trucks(request):
     })
 
 @api_view(['GET'])
+@permission_classes([IsManager])
 def unassigned_trucks(request):
     # Get only truck IDs that are currently assigned (not unassigned yet)
     assigned_truck_ids = DriverTruckAssignment.objects.filter(unassigned_at__isnull=True).values_list('truck_id', flat=True)
@@ -167,6 +185,7 @@ def unassigned_trucks(request):
     
     serializer = TruckSerializer(unassigned, many=True)
     return Response(serializer.data)
+
 class InvoiceViewSet(viewsets.ModelViewSet):
     """
     Endpoints:
@@ -178,12 +197,17 @@ class InvoiceViewSet(viewsets.ModelViewSet):
     Filters (query params): customer, project, status, date
     """
     serializer_class = InvoiceSerializer
+    permission_classes = [IsManagerOrDriver]
 
     def get_queryset(self):
         qs = (Invoice.objects
               .select_related("customer", "job")
               .prefetch_related(Prefetch("lines", queryset=InvoiceLine.objects.all()))
               .order_by("-id"))
+
+        user = self.request.user
+        if user and user.is_authenticated and user.groups.filter(name="Driver").exists():
+            qs = qs.filter(submitted_by_driver__user=user)
 
         customer = self.request.query_params.get("customer")
         project  = self.request.query_params.get("project")
@@ -193,7 +217,6 @@ class InvoiceViewSet(viewsets.ModelViewSet):
         if customer:
             qs = qs.filter(customer__company_name__icontains=customer)
         if project:
-            # adjust if your job/project field is named differently
             qs = qs.filter(job__project__icontains=project)
         if status_:
             qs = qs.filter(status=status_)
@@ -208,6 +231,16 @@ class InvoiceLineViewSet(viewsets.ModelViewSet):
     """
     queryset = InvoiceLine.objects.select_related("invoice").all()
     serializer_class = InvoiceLineSerializer
+    permission_classes = [IsManagerOrDriver]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        user = self.request.user
+        if user and user.is_authenticated and user.groups.filter(name="Driver").exists():
+            qs = qs.filter(invoice__submitted_by_driver__user=user)
+        return qs
+
+
 class PayReportViewSet(viewsets.ModelViewSet):
     """
     Uses Supabase tables:
@@ -216,13 +249,27 @@ class PayReportViewSet(viewsets.ModelViewSet):
     """
     queryset = PayReport.objects.select_related('driver').prefetch_related('lines')
     serializer_class = PayReportSerializer
+    permission_classes = [IsManagerOrDriver]
 
     def get_queryset(self):
         qs = super().get_queryset()
+
+        user = self.request.user
+        if user and user.is_authenticated and user.groups.filter(name="Driver").exists():
+            driver = None
+            for lookup in ("user", "account", "auth_user"):
+                try:
+                    driver = Driver.objects.filter(**{lookup: user}).first()
+                    if driver:
+                        break
+                except (FieldError, TypeError, ValueError):
+                    continue
+            qs = qs.filter(driver=driver) if driver else qs.none()
+
         driver_id = self.request.query_params.get('driver_id')
         start     = self.request.query_params.get('start')
         end       = self.request.query_params.get('end')
-        if driver_id:
+        if driver_id and not (user and user.is_authenticated and user.groups.filter(name="Driver").exists()):
             qs = qs.filter(driver_id=driver_id)
         if start:
             qs = qs.filter(week_end__gte=start)
@@ -252,6 +299,19 @@ class PayReportViewSet(viewsets.ModelViewSet):
         driver_id = request.data.get('driver_id')
         ws = parse_date(request.data.get('week_start'))
         we = parse_date(request.data.get('week_end'))
+
+        user = request.user
+        if user and user.is_authenticated and user.groups.filter(name="Driver").exists():
+            driver = None
+            for lookup in ("user", "account", "auth_user"):
+                try:
+                    driver = Driver.objects.filter(**{lookup: user}).first()
+                    if driver:
+                        break
+                except (FieldError, TypeError, ValueError):
+                    continue
+            if not driver or str(driver.id) != str(driver_id):
+                return Response({"detail": "Access denied."}, status=status.HTTP_403_FORBIDDEN)
 
         if not (driver_id and ws and we and we >= ws):
             return Response(
@@ -323,9 +383,23 @@ class PayReportViewSet(viewsets.ModelViewSet):
 class PayReportLineViewSet(viewsets.ModelViewSet):
     queryset = PayReportLine.objects.select_related('report', 'job')
     serializer_class = PayReportLineSerializer
+    permission_classes = [IsManagerOrDriver]
 
     def get_queryset(self):
         qs = super().get_queryset()
+
+        user = self.request.user
+        if user and user.is_authenticated and user.groups.filter(name="Driver").exists():
+            driver = None
+            for lookup in ("user", "account", "auth_user"):
+                try:
+                    driver = Driver.objects.filter(**{lookup: user}).first()
+                    if driver:
+                        break
+                except (FieldError, TypeError, ValueError):
+                    continue
+            qs = qs.filter(report__driver=driver) if driver else qs.none()
+
         report_id = self.request.query_params.get('report_id')
         job_id    = self.request.query_params.get('job_id')
         if report_id:

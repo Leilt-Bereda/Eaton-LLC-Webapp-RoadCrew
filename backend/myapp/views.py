@@ -4,6 +4,7 @@ from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from rest_framework.permissions import AllowAny
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
+from rest_framework_simplejwt.exceptions import AuthenticationFailed, TokenError
 from django.db.models import Q, Prefetch
 from rest_framework.decorators import action
 from django.utils.dateparse import parse_date
@@ -116,7 +117,14 @@ class OperatorViewSet(viewsets.ModelViewSet):
     serializer_class = OperatorSerializer
 
 class CustomTokenObtainPairView(TokenObtainPairView):
-    pass
+    def post(self, request, *args, **kwargs):
+        try:
+            return super().post(request, *args, **kwargs)
+        except AuthenticationFailed:
+            return Response(
+                {"error": "Invalid username or password.", "code": "INVALID_CREDENTIALS"},
+                status=status.HTTP_401_UNAUTHORIZED
+            )
 
 class CustomTokenRefreshView(TokenRefreshView):
     pass

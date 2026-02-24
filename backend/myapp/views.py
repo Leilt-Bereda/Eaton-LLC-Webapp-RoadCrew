@@ -88,6 +88,15 @@ class DriverViewSet(viewsets.ModelViewSet):
     serializer_class = DriverSerializer
     permission_classes = [IsManagerOrDriver]
 
+    def get_queryset(self):
+        qs = super().get_queryset()
+        user = self.request.user
+
+        if user and user.is_authenticated and user.groups.filter(name="Driver").exists():
+            return qs.filter(user=user)
+
+        return qs
+
 class TruckViewSet(viewsets.ModelViewSet):
     queryset = Truck.objects.all()
     serializer_class = TruckSerializer

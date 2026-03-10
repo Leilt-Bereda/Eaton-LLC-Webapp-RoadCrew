@@ -38,6 +38,7 @@ class AddressViewSet(viewsets.ModelViewSet):
     serializer_class = AddressSerializer
     
 class JobViewSet(viewsets.ModelViewSet):
+    permission_classes = [permissions.IsAuthenticated]
     serializer_class = JobSerializer
     queryset = Job.objects.select_related(
         'prime_contractor_customer',
@@ -61,6 +62,7 @@ class JobViewSet(viewsets.ModelViewSet):
         return qs
 
 class JobDriverAssignmentViewSet(viewsets.ModelViewSet):
+    permission_classes = [permissions.IsAuthenticated]
     queryset         = JobDriverAssignment.objects.select_related(
                          'job',
                          'driver_truck__driver',
@@ -79,8 +81,17 @@ class CustomerViewSet(viewsets.ModelViewSet):
             qs = qs.filter(company_name__icontains=q)
         return qs
 class DriverViewSet(viewsets.ModelViewSet):
+    permission_classes = [permissions.IsAuthenticated]
     queryset = Driver.objects.all()
     serializer_class = DriverSerializer
+
+    @action(detail=False, methods=['get'])
+    def me(self, request):
+        driver = Driver.objects.filter(user=request.user).first()
+        if not driver:
+            return Response({'error': 'No driver profile found for this user.'}, status=404)
+        serializer = self.get_serializer(driver)
+        return Response(serializer.data)
 
 class TruckViewSet(viewsets.ModelViewSet):
     queryset = Truck.objects.all()
@@ -103,6 +114,7 @@ class CommentViewSet(viewsets.ModelViewSet):
     serializer_class = CommentSerializer
 
 class DriverTruckAssignmentViewSet(viewsets.ModelViewSet):
+    permission_classes = [permissions.IsAuthenticated]
     queryset = DriverTruckAssignment.objects.all()
     serializer_class = DriverTruckAssignmentSerializer
 

@@ -30,7 +30,7 @@ SECRET_KEY = 'django-insecure-3#(cahk+@7w0!d$!b94+7^$s=fei+2!z*$-9^&s^@j15xfxphy
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = ['localhost', '127.0.0.1', '10.0.2.2']
 
 
 # Application definition
@@ -146,10 +146,11 @@ STATIC_URL = 'static/'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 CORS_ALLOWED_ORIGINS = [
-    "http://localhost:4200",  # Angular frontend (Development)
-    "https://yourdomain.com",  # Production frontend (Replace with actual domain)
+    "http://localhost:4200",   # Angular web app (Development)
+    "http://localhost:8081",   # React Native Expo mobile app (Development)
+    "https://yourdomain.com",  # Production (Replace with actual domain)
 ]
-CORS_ALLOW_ALL_ORIGINS = True  
+CORS_ALLOW_ALL_ORIGINS = False
 # REST_FRAMEWORK = {
 #     'DEFAULT_AUTHENTICATION_CLASSES': (
 #         'rest_framework_simplejwt.authentication.JWTAuthentication',

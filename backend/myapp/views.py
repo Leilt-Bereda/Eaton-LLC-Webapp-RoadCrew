@@ -93,6 +93,42 @@ class DriverViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(driver)
         return Response(serializer.data)
 
+    @action(detail=False, methods=['get'], url_path='me/jobs')
+    def jobs(self, request):
+        driver = Driver.objects.filter(user=request.user).first()
+        if not driver:
+            return Response({'error': 'No driver profile found for this user.'}, status=404)
+
+        # Get active truck assignments for this driver
+        truck_assignments = DriverTruckAssignment.objects.filter(
+            driver=driver, unassigned_at__isnull=True
+        )
+
+        # Get active job assignments for those trucks
+        job_assignments = JobDriverAssignment.objects.filter(
+            driver_truck__in=truck_assignments,
+            unassigned_at__isnull=True
+        ).select_related(
+            'job__loading_address',
+            'job__unloading_address',
+            'job__prime_contractor_customer'
+        )
+
+        jobs = [ja.job for ja in job_assignments]
+
+        # Optional filters
+        date_param = request.query_params.get('date')
+        upcoming = request.query_params.get('upcoming')
+        if date_param:
+            jobs = [j for j in jobs if str(j.job_date) == date_param]
+        elif upcoming:
+            from datetime import date
+            today = date.today()
+            jobs = [j for j in jobs if j.job_date >= today]
+
+        serializer = JobSerializer(jobs, many=True)
+        return Response(serializer.data)
+
 class TruckViewSet(viewsets.ModelViewSet):
     queryset = Truck.objects.all()
     serializer_class = TruckSerializer

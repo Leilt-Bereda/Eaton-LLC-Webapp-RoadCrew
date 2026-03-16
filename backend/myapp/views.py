@@ -70,6 +70,24 @@ class JobDriverAssignmentViewSet(viewsets.ModelViewSet):
                        )
     serializer_class = JobDriverAssignmentSerializer
     permission_classes = [IsManagerOrDriver]
+    @action(detail=False, methods=['get'], url_path='my-jobs')
+    def my_jobs(self, request):
+        """
+        Returns job assignments for the logged-in driver only.
+        Endpoint: GET /api/job-driver-assignments/my-jobs/
+        """
+
+        user = request.user
+
+        if not user or not user.is_authenticated:
+            return Response({"error": "Authentication required"}, status=401)
+
+        assignments = self.queryset.filter(
+            driver_truck__driver__user=user
+        )
+
+        serializer = self.get_serializer(assignments, many=True)
+        return Response(serializer.data)
     
 class CustomerViewSet(viewsets.ModelViewSet):
     queryset = Customer.objects.all().order_by('company_name')

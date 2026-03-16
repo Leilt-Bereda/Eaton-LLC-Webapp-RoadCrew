@@ -11,6 +11,7 @@ from .views import (
     DriverTruckAssignmentViewSet, RegisterView, CustomTokenObtainPairView, OperatorViewSet, AddressViewSet, JobDriverAssignmentViewSet,
     CustomTokenRefreshView, protected_view, assign_truck_to_driver, unassigned_trucks,
     PayReportViewSet, PayReportLineViewSet,
+    InvoiceViewSet, InvoiceLineViewSet,
 )
 
 router = DefaultRouter()
@@ -29,7 +30,8 @@ router.register(r'job-driver-assignments', JobDriverAssignmentViewSet)
 router.register(r'pay-reports', PayReportViewSet, basename='pay-report')
 router.register(r'pay-report-lines', PayReportLineViewSet, basename='pay-report-line')
 router.register(r'auth', AuthViewSet, basename='auth')
-
+router.register(r'invoices', InvoiceViewSet, basename='invoice')
+router.register(r'invoice-lines', InvoiceLineViewSet, basename='invoice-line')
 
 urlpatterns = [
     path('', include(router.urls)),  

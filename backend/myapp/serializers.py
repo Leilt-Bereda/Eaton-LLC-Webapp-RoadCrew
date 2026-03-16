@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from decimal import Decimal
-from .models import Job, Customer, Driver, Role, User, UserRole, Comment, Truck, DriverTruckAssignment, Operator, Address, JobDriverAssignment,Invoice,InvoiceLine,PayReport, PayReportLine
+from .models import Job, Customer, Driver, Role, User, UserRole, Comment, Truck, DriverTruckAssignment, Operator, Address, JobDriverAssignment, Invoice, InvoiceLine, PayReport, PayReportLine
 from django.contrib.auth import get_user_model
 
 class AddressSerializer(serializers.ModelSerializer):
@@ -39,8 +39,8 @@ class JobDriverAssignmentSerializer(serializers.ModelSerializer):
         fields = [
             'id',
             'job',
-            'driver_truck',       # POST this
-            'driver_truck_info',  # GET this
+            'driver_truck',       
+            'driver_truck_info', 
             'assigned_at',
             'unassigned_at',
         ]
@@ -72,7 +72,6 @@ class JobSerializer(serializers.ModelSerializer):
                                     allow_null=True
                                 )
 
-    # Nested read-only info for GET responses:
     loading_address_info           = AddressSerializer(source='loading_address', read_only=True)
     unloading_address_info         = AddressSerializer(source='unloading_address', read_only=True)
     backhaul_loading_address_info   = AddressSerializer(source='backhaul_loading_address', read_only=True)
@@ -144,7 +143,7 @@ class RoleSerializer(serializers.ModelSerializer):
 class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
-        fields = ['id', 'username', 'email', 'password']  # Include any other fields you need
+        fields = ['id', 'username', 'email', 'password']  
         extra_kwargs = {'password': {'write_only': True}}
 
     def create(self, validated_data):
@@ -178,7 +177,6 @@ class OperatorSerializer(serializers.ModelSerializer):
 
 
 class InvoiceLineSerializer(serializers.ModelSerializer):
-    # If your model does NOT store `amount`, compute it from qty * unit_price:
     amount = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
@@ -187,7 +185,6 @@ class InvoiceLineSerializer(serializers.ModelSerializer):
         read_only_fields = ["id"]
 
     def get_amount(self, obj):
-        # If your model already has `amount` field, replace with: return obj.amount
         qty = obj.quantity or 0
         price = obj.unit_price or 0
         return float(qty) * float(price)
@@ -199,7 +196,6 @@ class InvoiceSerializer(serializers.ModelSerializer):
     job_id = serializers.IntegerField(allow_null=True, required=False, write_only=True)
     lines = InvoiceLineSerializer(many=True, required=False)
     
-    # Nested read-only info for GET responses:
     customer = CustomerSerializer(read_only=True)
     job = JobSerializer(read_only=True)
 
@@ -236,7 +232,24 @@ class InvoiceSerializer(serializers.ModelSerializer):
         if not job_id:
             raise serializers.ValidationError({"job_id": "Job is required for creating an invoice."})
         job = Job.objects.get(id=job_id)
-        invoice = Invoice.objects.create(customer=customer, job=job, **validated_data)
+
+        request = self.context.get("request")
+        user = getattr(request, "user", None)
+        submitted_by_driver = None
+        if user and user.is_authenticated:
+            submitted_by_driver = Driver.objects.filter(user=user).first()
+        if user and user.groups.filter(name="Driver").exists() and not submitted_by_driver:
+            raise serializers.ValidationError(
+                {"driver": "Driver profile missing for this user. Contact admin to link Driver record."}
+            )
+
+
+        invoice = Invoice.objects.create(
+            customer=customer,
+            job=job,
+            submitted_by_driver=submitted_by_driver,
+            **validated_data
+        )
 
         # If no lines provided and date range exists, auto-populate from job data within date range
         if not lines_data and start_date and end_date:
@@ -389,6 +402,7 @@ class PayReportSerializer(serializers.ModelSerializer):
             if ws and we and we < ws:
                 raise serializers.ValidationError({"week_end": "must be on/after week_start"})
             return attrs
+
 class RequestOTPSerializer(serializers.Serializer):
     email = serializers.EmailField()
 
@@ -400,3 +414,4 @@ class ResetPasswordSerializer(serializers.Serializer):
     email = serializers.EmailField()
     code = serializers.RegexField(r"^\d{6}$")
     new_password = serializers.CharField(min_length=8, write_only=True)
+

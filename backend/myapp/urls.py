@@ -8,15 +8,18 @@ from . import views
 from .views import (
     JobViewSet, CustomerViewSet, DriverViewSet, RoleViewSet,
     UserViewSet, UserRoleViewSet, CommentViewSet, TruckViewSet,
-    DriverTruckAssignmentViewSet, RegisterView, CustomTokenObtainPairView, OperatorViewSet, AddressViewSet, JobDriverAssignmentViewSet,
-    CustomTokenRefreshView, protected_view, assign_truck_to_driver, unassigned_trucks,
-    PayReportViewSet, PayReportLineViewSet,
+    DriverTruckAssignmentViewSet, DeviceTokenViewSet,
+    RegisterView, CustomTokenObtainPairView, OperatorViewSet,
+    AddressViewSet, JobDriverAssignmentViewSet,
+    CustomTokenRefreshView, protected_view, assign_truck_to_driver,
+    unassigned_trucks, PayReportViewSet, PayReportLineViewSet,
     InvoiceViewSet, InvoiceLineViewSet,
 )
 
 router = DefaultRouter()
 router.register(r'jobs', JobViewSet)
 router.register(r'customers', CustomerViewSet)
+router.register(r'devices', DeviceTokenViewSet, basename='devices')
 router.register(r'drivers', DriverViewSet)
 router.register(r'roles', RoleViewSet)
 router.register(r'users', UserViewSet)

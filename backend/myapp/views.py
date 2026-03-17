@@ -27,6 +27,7 @@ from .serializers import (
     InvoiceLineSerializer, PayReportSerializer, PayReportLineSerializer
 )
 from .permissions import IsDriver, IsManager, IsManagerOrDriver
+import requests
 
 # For user model
 User = get_user_model()
@@ -35,7 +36,29 @@ User = get_user_model()
 def home(request):
     return HttpResponse("Hello, this is the home page!")
 
+def send_push_notification(expo_token, title, body, data=None):
+    url = "https://exp.host/--/api/v2/push/send"
 
+    payload = {
+        "to": expo_token,
+        "title": title,
+        "body": body,
+        "sound": "default",
+        "data": data or {}
+    }
+
+    headers = {
+        "Content-Type": "application/json"
+    }
+
+    try:
+        response = requests.post(url, json=payload, headers=headers)
+        #print("Expo response:", response.json())
+        return response.json()
+    except Exception as e:
+        print("Push notification error:", str(e))
+        return None
+        
 # ViewSets for basic CRUD APIs
 class AddressViewSet(viewsets.ModelViewSet):
     queryset = Address.objects.all()
@@ -92,6 +115,30 @@ class JobDriverAssignmentViewSet(viewsets.ModelViewSet):
 
         serializer = self.get_serializer(assignments, many=True)
         return Response(serializer.data)
+        
+    def perform_create(self, serializer):
+        assignment = serializer.save()
+
+        try:
+            driver = assignment.driver_truck.driver
+            user = driver.user
+            job = assignment.job
+
+            device_tokens = DeviceToken.objects.filter(user=user)
+
+            for device in device_tokens:
+                send_push_notification(
+                    expo_token=device.token,
+                    title="New Job Assigned",
+                    body=f"You have been assigned to Job {job.job_number}",
+                    data={
+                        "jobId": job.id,
+                        "jobNumber": job.job_number
+                    }
+                )
+
+        except Exception as e:
+            print("Error sending push notification:", str(e))
     
 class CustomerViewSet(viewsets.ModelViewSet):
     queryset = Customer.objects.all().order_by('company_name')

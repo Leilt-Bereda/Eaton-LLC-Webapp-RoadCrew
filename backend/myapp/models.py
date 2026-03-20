@@ -142,6 +142,13 @@ class Job(models.Model):
         ]
     def __str__(self):
         return f"Job {self.job_number} - {self.project}"
+    
+JOB_STATUS_CHOICES = [
+    ('assigned', 'Assigned'),
+    ('en_route', 'En Route'),
+    ('on_site', 'On Site'),
+    ('completed', 'Completed'),
+]
 
 class JobDriverAssignment(models.Model):
     job  = models.ForeignKey(
@@ -157,12 +164,17 @@ class JobDriverAssignment(models.Model):
     )
     assigned_at   = models.DateTimeField(auto_now_add=True)
     unassigned_at = models.DateTimeField(null=True, blank=True)
+    status = models.CharField(max_length=20, choices=JOB_STATUS_CHOICES, default='assigned')
+    started_at = models.DateTimeField(null=True, blank=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+
 
     class Meta:
         unique_together = ('job', 'driver_truck')  # prevent duplicates
 
     def __str__(self):
         return f"{self.driver_truck.driver.name} → {self.job.job_number}"
+    
 
 class Address(models.Model):
     street_address = models.CharField(max_length=255)

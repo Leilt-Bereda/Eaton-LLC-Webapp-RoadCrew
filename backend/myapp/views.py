@@ -16,12 +16,12 @@ from .models import PasswordOTP
 from .emails import send_password_otp_email
 from django.contrib.auth import get_user_model
 from .models import (
-    Job, Customer, Driver, Role, UserRole, Comment, Truck, DriverTruckAssignment, Operator, Address, JobDriverAssignment,Invoice, InvoiceLine,PayReport, PayReportLine
+    Job, Customer, Driver, Role, UserRole, Comment, Truck, DriverTruckAssignment, Operator, Address, JobDriverAssignment, Invoice, InvoiceLine, PayReport, PayReportLine,
 )
 from .serializers import (
     JobSerializer, CustomerSerializer, DriverSerializer, RoleSerializer,
     UserSerializer, UserRoleSerializer, CommentSerializer, TruckSerializer,
-    DriverTruckAssignmentSerializer, OperatorSerializer, AddressSerializer, JobDriverAssignmentSerializer,InvoiceSerializer, InvoiceLineSerializer, PayReportSerializer, PayReportLineSerializer
+    DriverTruckAssignmentSerializer, OperatorSerializer, AddressSerializer, JobDriverAssignmentSerializer, InvoiceSerializer, InvoiceLineSerializer, PayReportSerializer, PayReportLineSerializer
 )
 from .permissions import IsDriver, IsManager, IsManagerOrDriver
 
@@ -40,7 +40,6 @@ class AddressViewSet(viewsets.ModelViewSet):
     permission_classes = [IsManagerOrDriver]
     
 class JobViewSet(viewsets.ModelViewSet):
-    permission_classes = [permissions.IsAuthenticated]
     serializer_class = JobSerializer
     permission_classes = [IsManagerOrDriver]
     queryset = Job.objects.select_related(
@@ -65,7 +64,6 @@ class JobViewSet(viewsets.ModelViewSet):
         return qs
 
 class JobDriverAssignmentViewSet(viewsets.ModelViewSet):
-    permission_classes = [permissions.IsAuthenticated]
     queryset         = JobDriverAssignment.objects.select_related(
                          'job',
                          'driver_truck__driver',
@@ -91,7 +89,23 @@ class JobDriverAssignmentViewSet(viewsets.ModelViewSet):
 
         serializer = self.get_serializer(assignments, many=True)
         return Response(serializer.data)
-    
+
+    @action(detail=True, methods=['patch'], url_path='status')
+    def update_status(self, request, pk=None):
+        assignment = self.get_object()
+        if assignment.driver_truck.driver.user != request.user:
+            return Response({'error': 'Forbidden'}, status=403)
+        new_status = request.data.get('status')
+        if new_status not in dict(JOB_STATUS_CHOICES):
+            return Response({'error': 'Invalid status'}, status=400)
+        if new_status == 'en_route':
+            assignment.started_at = timezone.now()
+        if new_status == 'completed':
+            assignment.completed_at = timezone.now()
+        assignment.status = new_status
+        assignment.save()
+        return Response({'status': assignment.status})
+
 class CustomerViewSet(viewsets.ModelViewSet):
     queryset = Customer.objects.all().order_by('company_name')
     serializer_class = CustomerSerializer
@@ -105,7 +119,6 @@ class CustomerViewSet(viewsets.ModelViewSet):
         return qs
 
 class DriverViewSet(viewsets.ModelViewSet):
-    permission_classes = [permissions.IsAuthenticated]
     queryset = Driver.objects.all()
     serializer_class = DriverSerializer
     permission_classes = [IsManagerOrDriver]
@@ -189,7 +202,6 @@ class CommentViewSet(viewsets.ModelViewSet):
     permission_classes = [IsManager]
 
 class DriverTruckAssignmentViewSet(viewsets.ModelViewSet):
-    permission_classes = [permissions.IsAuthenticated]
     queryset = DriverTruckAssignment.objects.all()
     serializer_class = DriverTruckAssignmentSerializer
     permission_classes = [IsManager]

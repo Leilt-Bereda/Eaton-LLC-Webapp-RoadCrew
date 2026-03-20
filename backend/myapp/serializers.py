@@ -37,14 +37,12 @@ class JobDriverAssignmentSerializer(serializers.ModelSerializer):
     class Meta:
         model  = JobDriverAssignment
         fields = [
-            'id',
-            'job',
-            'driver_truck',       
-            'driver_truck_info', 
-            'assigned_at',
-            'unassigned_at',
+        'id', 'job', 'driver_truck', 'driver_truck_info',
+        'assigned_at', 'unassigned_at',
+        'status', 'started_at', 'completed_at',
         ]
-        read_only_fields = ['assigned_at', 'unassigned_at']
+        read_only_fields = ['assigned_at', 'unassigned_at', 'started_at', 'completed_at']
+
         
 class JobSerializer(serializers.ModelSerializer):
     # Writeable FK fields:
@@ -414,4 +412,5 @@ class ResetPasswordSerializer(serializers.Serializer):
     email = serializers.EmailField()
     code = serializers.RegexField(r"^\d{6}$")
     new_password = serializers.CharField(min_length=8, write_only=True)
+
 

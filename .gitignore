@@ -184,3 +184,6 @@ venv/
 backend/venv/
 **/pycache/
 *.pyc
+
+#planning
+planning/

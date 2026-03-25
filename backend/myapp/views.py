@@ -18,7 +18,7 @@ from django.contrib.auth import get_user_model
 from .models import (
     Job, Customer, Driver, Role, UserRole, Comment, Truck, DriverTruckAssignment,
     Operator, Address, JobDriverAssignment, DeviceToken, Invoice, InvoiceLine,
-    PayReport, PayReportLine
+    PayReport, PayReportLine, JOB_STATUS_CHOICES
 )
 from .serializers import (
     JobSerializer, CustomerSerializer, DriverSerializer, RoleSerializer,

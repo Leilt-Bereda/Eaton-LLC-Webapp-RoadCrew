@@ -16,12 +16,16 @@ from .models import PasswordOTP
 from .emails import send_password_otp_email
 from django.contrib.auth import get_user_model
 from .models import (
-    Job, Customer, Driver, Role, UserRole, Comment, Truck, DriverTruckAssignment, Operator, Address, JobDriverAssignment, Invoice, InvoiceLine, PayReport, PayReportLine,
+    Job, Customer, Driver, Role, UserRole, Comment, Truck, DriverTruckAssignment,
+    Operator, Address, JobDriverAssignment, DeviceToken, Invoice, InvoiceLine,
+    PayReport, PayReportLine
 )
 from .serializers import (
     JobSerializer, CustomerSerializer, DriverSerializer, RoleSerializer,
     UserSerializer, UserRoleSerializer, CommentSerializer, TruckSerializer,
-    DriverTruckAssignmentSerializer, OperatorSerializer, AddressSerializer, JobDriverAssignmentSerializer, InvoiceSerializer, InvoiceLineSerializer, PayReportSerializer, PayReportLineSerializer
+    DriverTruckAssignmentSerializer, OperatorSerializer, AddressSerializer,
+    JobDriverAssignmentSerializer, DeviceTokenSerializer, InvoiceSerializer,
+    InvoiceLineSerializer, PayReportSerializer, PayReportLineSerializer
 )
 from .permissions import IsDriver, IsManager, IsManagerOrDriver
 
@@ -205,6 +209,44 @@ class DriverTruckAssignmentViewSet(viewsets.ModelViewSet):
     queryset = DriverTruckAssignment.objects.all()
     serializer_class = DriverTruckAssignmentSerializer
     permission_classes = [IsManager]
+    
+class DeviceTokenViewSet(viewsets.ModelViewSet):
+    queryset = DeviceToken.objects.all()
+    serializer_class = DeviceTokenSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        return DeviceToken.objects.filter(user=self.request.user)
+
+    def create(self, request):
+        token_value = request.data.get('token')
+        platform = request.data.get('platform')
+
+        if not token_value or not platform:
+            return Response(
+                {'error': 'token and platform are required'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        if platform not in ['ios', 'android']:
+            return Response(
+                {'error': 'platform must be ios or android'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        device_token, created = DeviceToken.objects.update_or_create(
+            token=token_value,
+            defaults={
+                'user': request.user,
+                'platform': platform
+            }
+        )
+
+        serializer = self.get_serializer(device_token)
+        return Response(
+            serializer.data,
+            status=status.HTTP_201_CREATED
+        )
 
 # Authentication views
 class RegisterView(generics.CreateAPIView):

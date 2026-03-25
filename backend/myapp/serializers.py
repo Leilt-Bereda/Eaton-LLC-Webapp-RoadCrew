@@ -1,7 +1,27 @@
 from rest_framework import serializers
 from decimal import Decimal
-from .models import Job, Customer, Driver, Role, User, UserRole, Comment, Truck, DriverTruckAssignment, Operator, Address, JobDriverAssignment, Invoice, InvoiceLine, PayReport, PayReportLine
 from django.contrib.auth import get_user_model
+
+from .models import (
+    Job,
+    Customer,
+    Driver,
+    Role,
+    UserRole,
+    Comment,
+    Truck,
+    DriverTruckAssignment,
+    Operator,
+    Address,
+    JobDriverAssignment,
+    DeviceToken,
+    Invoice,
+    InvoiceLine,
+    PayReport,
+    PayReportLine
+)
+
+User = get_user_model()
 
 class AddressSerializer(serializers.ModelSerializer):
     class Meta:
@@ -132,6 +152,12 @@ class DriverSerializer(serializers.ModelSerializer):
     class Meta:
         model = Driver
         fields = '__all__'
+        
+class DeviceTokenSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = DeviceToken
+        fields = '__all__'
+        read_only_fields = ['id', 'user', 'created_at', 'updated_at']
 
 class RoleSerializer(serializers.ModelSerializer):
     class Meta:

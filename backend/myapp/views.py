@@ -1,4 +1,5 @@
 from django.http import HttpResponse
+from django.shortcuts import get_object_or_404
 from rest_framework import viewsets, generics, permissions, status
 from rest_framework.decorators import api_view, action, permission_classes
 from rest_framework.response import Response
@@ -226,6 +227,27 @@ class DriverViewSet(viewsets.ModelViewSet):
 
         serializer = JobSerializer(jobs, many=True)
         return Response(serializer.data)
+
+    @action(detail=False, methods=['get'], url_path='me/summary')
+    def summary(self, request):
+        from datetime import date
+        driver = get_object_or_404(Driver, user=request.user)
+        today = date.today()
+
+        truck_assignments = DriverTruckAssignment.objects.filter(
+            driver=driver, unassigned_at__isnull=True
+        )
+        job_assignments = JobDriverAssignment.objects.filter(
+            driver_truck__in=truck_assignments,
+            unassigned_at__isnull=True,
+            job__job_date__gte=today
+        ).select_related('job').order_by('job__job_date')[:10]
+
+        return Response({
+            'driver': DriverSerializer(driver).data,
+            'upcoming_job_count': job_assignments.count(),
+            'next_job': JobSerializer(job_assignments.first().job).data if job_assignments.exists() else None,
+        })
 
 class TruckViewSet(viewsets.ModelViewSet):
     queryset = Truck.objects.all()

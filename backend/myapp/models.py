@@ -166,6 +166,7 @@ class JobDriverAssignment(models.Model):
     unassigned_at = models.DateTimeField(null=True, blank=True)
     status = models.CharField(max_length=20, choices=JOB_STATUS_CHOICES, default='assigned')
     started_at = models.DateTimeField(null=True, blank=True)
+    on_site_at = models.DateTimeField(null=True, blank=True)
     completed_at = models.DateTimeField(null=True, blank=True)
 
 

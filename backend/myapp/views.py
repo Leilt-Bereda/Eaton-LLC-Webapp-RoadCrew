@@ -127,6 +127,8 @@ class JobDriverAssignmentViewSet(viewsets.ModelViewSet):
             return Response({'error': 'Invalid status'}, status=400)
         if new_status == 'en_route':
             assignment.started_at = timezone.now()
+        if new_status == 'on_site':
+            assignment.on_site_at = timezone.now()
         if new_status == 'completed':
             assignment.completed_at = timezone.now()
         assignment.status = new_status

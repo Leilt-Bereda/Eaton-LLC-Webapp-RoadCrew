@@ -59,9 +59,9 @@ class JobDriverAssignmentSerializer(serializers.ModelSerializer):
         fields = [
         'id', 'job', 'driver_truck', 'driver_truck_info',
         'assigned_at', 'unassigned_at',
-        'status', 'started_at', 'completed_at',
+        'status', 'started_at', 'on_site_at', 'completed_at',
         ]
-        read_only_fields = ['assigned_at', 'unassigned_at', 'started_at', 'completed_at']
+        read_only_fields = ['assigned_at', 'unassigned_at', 'started_at', 'on_site_at', 'completed_at']
 
         
 class JobSerializer(serializers.ModelSerializer):

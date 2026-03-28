@@ -168,7 +168,7 @@ class TestInvoiceWorkflow:
         
         response = authenticated_api_client.patch(url, data, format='json')
         
-        assert response.status_code == status.HTTP_200_OK
+        assert response.status_code == http_status.HTTP_200_OK
         test_invoice.refresh_from_db()
         assert test_invoice.lines.count() == 2
         assert test_invoice.total_amount == Decimal('1100.00')  # 100 + 1000
@@ -193,7 +193,7 @@ class TestInvoiceWorkflow:
         url = reverse('invoice-list')
         response = authenticated_api_client.get(url, {'date': date.today().isoformat()})
         
-        assert response.status_code == status.HTTP_200_OK
+        assert response.status_code == http_status.HTTP_200_OK
         assert len(response.data) == 1
         assert response.data[0]['id'] == invoice1.id
 
@@ -308,7 +308,7 @@ class TestInvoiceEdgeCases:
         
         response = authenticated_api_client.patch(url, data, format='json')
         
-        assert response.status_code == status.HTTP_200_OK
+        assert response.status_code == http_status.HTTP_200_OK
         test_invoice.refresh_from_db()
         assert test_invoice.lines.count() == 0
         assert test_invoice.total_amount == Decimal('0.00')
@@ -320,7 +320,7 @@ class TestInvoiceEdgeCases:
         
         response = authenticated_api_client.patch(url, data, format='json')
         
-        assert response.status_code == status.HTTP_200_OK
+        assert response.status_code == http_status.HTTP_200_OK
         test_invoice.refresh_from_db()
         assert test_invoice.status == 'Sent'
         # Other fields should remain unchanged

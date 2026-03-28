@@ -134,6 +134,12 @@ class TestInvoiceFilteringAPI:
     
     def test_filter_by_project(self, authenticated_api_client, test_customer, test_job):
         """Test filtering invoices by project name."""
+        Invoice.objects.create(
+            customer=test_customer,
+            job=test_job,
+            invoice_date=date.today(),
+        )
+
         url = reverse('invoice-list')
         response = authenticated_api_client.get(url, {'project': test_job.project})
         

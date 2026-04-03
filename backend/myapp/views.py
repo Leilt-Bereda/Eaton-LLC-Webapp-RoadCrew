@@ -225,6 +225,11 @@ class DriverViewSet(viewsets.ModelViewSet):
             today = date.today()
             jobs = [j for j in jobs if j.job_date >= today]
 
+        page = self.paginate_queryset(jobs)
+        if page is not None:
+            serializer = JobSerializer(page, many=True)
+            return self.get_paginated_response(serializer.data)
+
         serializer = JobSerializer(jobs, many=True)
         return Response(serializer.data)
 

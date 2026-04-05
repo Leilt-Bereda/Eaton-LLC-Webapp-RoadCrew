@@ -1,5 +1,5 @@
 from django.http import HttpResponse
-from rest_framework import viewsets, generics, permissions, status
+from rest_framework import viewsets, generics, permissions, status, serializers
 from rest_framework.decorators import api_view, action, permission_classes
 from rest_framework.response import Response
 from rest_framework.permissions import AllowAny
@@ -28,6 +28,7 @@ from .serializers import (
     InvoiceLineSerializer, PayReportSerializer, PayReportLineSerializer
 )
 from .permissions import IsDriver, IsManager, IsManagerOrDriver
+from drf_spectacular.utils import extend_schema, inline_serializer
 import requests
 
 # For user model
@@ -98,6 +99,8 @@ class JobDriverAssignmentViewSet(viewsets.ModelViewSet):
                        )
     serializer_class = JobDriverAssignmentSerializer
     permission_classes = [IsManagerOrDriver]
+
+    @extend_schema(responses=JobDriverAssignmentSerializer(many=True))
     @action(detail=False, methods=['get'], url_path='my-jobs')
     def my_jobs(self, request):
         """
@@ -117,20 +120,64 @@ class JobDriverAssignmentViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(assignments, many=True)
         return Response(serializer.data)
 
+    @extend_schema(
+        request=inline_serializer(
+            name='JobDriverAssignmentStatusUpdateRequest',
+            fields={
+                'status': serializers.CharField(),
+                'expected_status': serializers.CharField(required=False),
+            },
+        ),
+        responses=inline_serializer(
+            name='JobDriverAssignmentStatusUpdateResponse',
+            fields={'status': serializers.CharField()},
+        ),
+    )
     @action(detail=True, methods=['patch'], url_path='status')
     def update_status(self, request, pk=None):
         assignment = self.get_object()
+
         if assignment.driver_truck.driver.user != request.user:
             return Response({'error': 'Forbidden'}, status=403)
+
         new_status = request.data.get('status')
         if new_status not in dict(JOB_STATUS_CHOICES):
             return Response({'error': 'Invalid status'}, status=400)
-        if new_status == 'en_route':
+
+        current_status = assignment.status
+        expected_status = request.data.get('expected_status')
+
+        if expected_status is not None and expected_status not in dict(JOB_STATUS_CHOICES):
+            return Response(
+                {
+                    'error': 'Invalid expected_status',
+                    'allowed_statuses': list(dict(JOB_STATUS_CHOICES).keys()),
+                },
+                status=400
+            )
+
+        # If client provides the status it last saw, reject stale writes.
+        if expected_status is not None and expected_status != current_status:
+            return Response(
+                {
+                    'code': 'SYNC_CONFLICT',
+                    'error': 'Conflict: assignment status changed on the server.',
+                    'current_status': current_status,
+                    'expected_status': expected_status,
+                    'requested_status': new_status,
+                },
+                status=409
+            )
+
+        if new_status == 'en_route' and not assignment.started_at:
             assignment.started_at = timezone.now()
-        if new_status == 'completed':
+
+        if new_status == 'completed' and not assignment.completed_at:
             assignment.completed_at = timezone.now()
+
         assignment.status = new_status
         assignment.save()
+
         return Response({'status': assignment.status})
 
     def perform_create(self, serializer):
@@ -320,12 +367,31 @@ class CustomTokenRefreshView(TokenRefreshView):
     pass
 
 # Protected test endpoint
+@extend_schema(
+    responses=inline_serializer(
+        name='ProtectedViewResponse',
+        fields={'message': serializers.CharField()},
+    )
+)
 @api_view(["GET"])
 @permission_classes([IsManagerOrDriver])
 def protected_view(request):
     return Response({"message": "This is a protected view!"}, status=status.HTTP_200_OK)
 
 # API: Assign a truck to a driver
+@extend_schema(
+    request=inline_serializer(
+        name='AssignTruckRequest',
+        fields={
+            'driver_id': serializers.IntegerField(),
+            'truck_id': serializers.IntegerField(),
+        },
+    ),
+    responses=inline_serializer(
+        name='AssignTruckResponse',
+        fields={'message': serializers.CharField()},
+    ),
+)
 @api_view(["POST"])
 @permission_classes([IsManager])
 def assign_truck_to_driver(request):
@@ -358,6 +424,7 @@ def drivers_and_trucks(request):
         "trucks": truck_data
     })
 
+@extend_schema(responses=TruckSerializer(many=True))
 @api_view(['GET'])
 @permission_classes([IsManager])
 def unassigned_trucks(request):
@@ -469,6 +536,17 @@ class PayReportViewSet(viewsets.ModelViewSet):
         pr = serializer.save(updated_at=timezone.now())
         pr.recalc_from_lines()
 
+    @extend_schema(
+        request=inline_serializer(
+            name='PayReportGenerateRequest',
+            fields={
+                'driver_id': serializers.IntegerField(),
+                'week_start': serializers.DateField(),
+                'week_end': serializers.DateField(),
+            },
+        ),
+        responses=PayReportSerializer,
+    )
     @action(detail=False, methods=['post'], url_path='generate')
     def generate(self, request):
         """
@@ -607,7 +685,25 @@ def _recent_otp_count(user, minutes=15):
 
 class AuthViewSet(viewsets.ViewSet):
     permission_classes = [permissions.AllowAny]
+    serializer_class = RequestOTPSerializer
 
+    def get_serializer_class(self):
+        if self.action == 'verify_password_otp':
+            return VerifyOTPSerializer
+        if self.action == 'reset_password_with_otp':
+            return ResetPasswordSerializer
+        return RequestOTPSerializer
+
+    @extend_schema(
+        request=RequestOTPSerializer,
+        responses=inline_serializer(
+            name='PasswordResetRequestResponse',
+            fields={
+                'ok': serializers.BooleanField(),
+                'message': serializers.CharField(),
+            },
+        ),
+    )
     @action(detail=False, methods=["post"], url_path="password-reset")
     def request_password_otp(self, request):
         s = RequestOTPSerializer(data=request.data); s.is_valid(raise_exception=True)
@@ -622,6 +718,13 @@ class AuthViewSet(viewsets.ViewSet):
         # Always return success to prevent email enumeration
         return Response({"ok": True, "message": "If an account exists with this email, a password reset code has been sent."})
 
+    @extend_schema(
+        request=VerifyOTPSerializer,
+        responses=inline_serializer(
+            name='PasswordResetVerifyResponse',
+            fields={'valid': serializers.BooleanField()},
+        ),
+    )
     @action(detail=False, methods=["post"], url_path="password-reset/verify")
     def verify_password_otp(self, request):
         s = VerifyOTPSerializer(data=request.data); s.is_valid(raise_exception=True)
@@ -634,6 +737,13 @@ class AuthViewSet(viewsets.ViewSet):
         if otp and otp.verify(code): return Response({"valid": True})
         return Response({"valid": False})
 
+    @extend_schema(
+        request=ResetPasswordSerializer,
+        responses=inline_serializer(
+            name='PasswordResetConfirmResponse',
+            fields={'ok': serializers.BooleanField()},
+        ),
+    )
     @action(detail=False, methods=["post"], url_path="password-reset/confirm")
     def reset_password_with_otp(self, request):
         s = ResetPasswordSerializer(data=request.data); s.is_valid(raise_exception=True)

@@ -209,7 +209,7 @@ class InvoiceLineSerializer(serializers.ModelSerializer):
         model = InvoiceLine
         fields = ["id", "invoice", "description", "service_date", "quantity", "unit_price", "amount"]
 
-    def get_amount(self, obj):
+    def get_amount(self, obj) -> float:
         qty = obj.quantity or 0
         price = obj.unit_price or 0
         return float(qty) * float(price)

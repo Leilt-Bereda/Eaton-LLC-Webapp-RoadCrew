@@ -47,6 +47,7 @@ INSTALLED_APPS = [
     'rest_framework',
     'rest_framework_simplejwt',
     'myapp',
+    'drf_spectacular',
 ]
 
 MIDDLEWARE = [
@@ -167,6 +168,7 @@ REST_FRAMEWORK = {
     'DEFAULT_PERMISSION_CLASSES': (
         'rest_framework.permissions.IsAuthenticated',  # Allow public access by default
     ),
+    'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
 }
 
 SIMPLE_JWT = {
@@ -205,3 +207,10 @@ DEFAULT_FROM_EMAIL = os.environ.get("FROM_EMAIL") or EMAIL_HOST_USER or "no-repl
 
 # Email timeout settings
 EMAIL_TIMEOUT = int(os.environ.get("EMAIL_TIMEOUT", 20))  # seconds
+
+SPECTACULAR_SETTINGS = {
+    'TITLE': 'Eaton LLC API',
+    'DESCRIPTION': 'API documentation for Eaton LLC mobile/backend integration',
+    'VERSION': '1.0.0',
+    'SERVE_INCLUDE_SCHEMA': False,
+}

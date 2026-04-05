@@ -1,4 +1,5 @@
 from django.http import HttpResponse
+from drf_spectacular.utils import extend_schema, OpenApiParameter
 from django.shortcuts import get_object_or_404
 from rest_framework import viewsets, generics, permissions, status
 from rest_framework.decorators import api_view, action, permission_classes
@@ -118,6 +119,7 @@ class JobDriverAssignmentViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(assignments, many=True)
         return Response(serializer.data)
 
+    @extend_schema(summary="Update the status of a job assignment (en_route, on_site, completed)")
     @action(detail=True, methods=['patch'], url_path='status')
     def update_status(self, request, pk=None):
         assignment = self.get_object()
@@ -184,6 +186,7 @@ class DriverViewSet(viewsets.ModelViewSet):
 
         return qs
 
+    @extend_schema(summary="Get authenticated driver's profile")
     @action(detail=False, methods=['get'])
     def me(self, request):
         driver = Driver.objects.filter(user=request.user).first()
@@ -192,6 +195,13 @@ class DriverViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(driver)
         return Response(serializer.data)
 
+    @extend_schema(
+        summary="Get jobs assigned to the authenticated driver",
+        parameters=[
+            OpenApiParameter(name='date', description='Filter by date (YYYY-MM-DD)', required=False, type=str),
+            OpenApiParameter(name='upcoming', description='Filter for upcoming jobs from today', required=False, type=str),
+        ]
+    )
     @action(detail=False, methods=['get'], url_path='me/jobs')
     def jobs(self, request):
         driver = Driver.objects.filter(user=request.user).first()
@@ -233,6 +243,7 @@ class DriverViewSet(viewsets.ModelViewSet):
         serializer = JobSerializer(jobs, many=True)
         return Response(serializer.data)
 
+    @extend_schema(summary="Get dashboard summary for the authenticated driver")
     @action(detail=False, methods=['get'], url_path='me/summary')
     def summary(self, request):
         from datetime import date

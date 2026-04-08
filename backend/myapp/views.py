@@ -173,7 +173,7 @@ class CustomerViewSet(viewsets.ModelViewSet):
         return qs
 
 class DriverViewSet(viewsets.ModelViewSet):
-    queryset = Driver.objects.all()
+    queryset = Driver.objects.all().order_by('id')
     serializer_class = DriverSerializer
     permission_classes = [IsManagerOrDriver]
 
@@ -669,7 +669,7 @@ class AuthViewSet(viewsets.ViewSet):
         otp = (PasswordOTP.objects
                .filter(user=user, purpose="password_reset", used=False)
                .order_by("-created_at").first())
-        if otp and otp.verify(code): return Response({"valid": True})
+        if otp and otp.code_hash == otp._hash(code, otp.salt): return Response({"valid": True})
         return Response({"valid": False})
 
     @action(detail=False, methods=["post"], url_path="password-reset/confirm")

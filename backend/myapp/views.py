@@ -1,4 +1,6 @@
 from django.http import HttpResponse
+from drf_spectacular.utils import extend_schema, OpenApiParameter
+from django.shortcuts import get_object_or_404
 from rest_framework import viewsets, generics, permissions, status
 from rest_framework.decorators import api_view, action, permission_classes
 from rest_framework.response import Response
@@ -117,6 +119,7 @@ class JobDriverAssignmentViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(assignments, many=True)
         return Response(serializer.data)
 
+    @extend_schema(summary="Update the status of a job assignment (en_route, on_site, completed)")
     @action(detail=True, methods=['patch'], url_path='status')
     def update_status(self, request, pk=None):
         assignment = self.get_object()
@@ -172,7 +175,7 @@ class CustomerViewSet(viewsets.ModelViewSet):
         return qs
 
 class DriverViewSet(viewsets.ModelViewSet):
-    queryset = Driver.objects.all()
+    queryset = Driver.objects.all().order_by('id')
     serializer_class = DriverSerializer
     permission_classes = [IsManagerOrDriver]
 
@@ -185,6 +188,7 @@ class DriverViewSet(viewsets.ModelViewSet):
 
         return qs
 
+    @extend_schema(summary="Get authenticated driver's profile")
     @action(detail=False, methods=['get'])
     def me(self, request):
         driver = Driver.objects.filter(user=request.user).first()
@@ -193,6 +197,13 @@ class DriverViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(driver)
         return Response(serializer.data)
 
+    @extend_schema(
+        summary="Get jobs assigned to the authenticated driver",
+        parameters=[
+            OpenApiParameter(name='date', description='Filter by date (YYYY-MM-DD)', required=False, type=str),
+            OpenApiParameter(name='upcoming', description='Filter for upcoming jobs from today', required=False, type=str),
+        ]
+    )
     @action(detail=False, methods=['get'], url_path='me/jobs')
     def jobs(self, request):
         driver = Driver.objects.filter(user=request.user).first()
@@ -226,8 +237,35 @@ class DriverViewSet(viewsets.ModelViewSet):
             today = date.today()
             jobs = [j for j in jobs if j.job_date >= today]
 
+        page = self.paginate_queryset(jobs)
+        if page is not None:
+            serializer = JobSerializer(page, many=True)
+            return self.get_paginated_response(serializer.data)
+
         serializer = JobSerializer(jobs, many=True)
         return Response(serializer.data)
+
+    @extend_schema(summary="Get dashboard summary for the authenticated driver")
+    @action(detail=False, methods=['get'], url_path='me/summary')
+    def summary(self, request):
+        from datetime import date
+        driver = get_object_or_404(Driver, user=request.user)
+        today = date.today()
+
+        truck_assignments = DriverTruckAssignment.objects.filter(
+            driver=driver, unassigned_at__isnull=True
+        )
+        job_assignments = JobDriverAssignment.objects.filter(
+            driver_truck__in=truck_assignments,
+            unassigned_at__isnull=True,
+            job__job_date__gte=today
+        ).select_related('job').order_by('job__job_date')[:10]
+
+        return Response({
+            'driver': DriverSerializer(driver).data,
+            'upcoming_job_count': job_assignments.count(),
+            'next_job': JobSerializer(job_assignments.first().job).data if job_assignments.exists() else None,
+        })
 
 class TruckViewSet(viewsets.ModelViewSet):
     queryset = Truck.objects.all()
@@ -633,7 +671,7 @@ class AuthViewSet(viewsets.ViewSet):
         otp = (PasswordOTP.objects
                .filter(user=user, purpose="password_reset", used=False)
                .order_by("-created_at").first())
-        if otp and otp.verify(code): return Response({"valid": True})
+        if otp and otp.code_hash == otp._hash(code, otp.salt): return Response({"valid": True})
         return Response({"valid": False})
 
     @action(detail=False, methods=["post"], url_path="password-reset/confirm")

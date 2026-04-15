@@ -20,7 +20,7 @@ from django.contrib.auth import get_user_model
 from .models import (
     Job, Customer, Driver, Role, UserRole, Comment, Truck, DriverTruckAssignment,
     Operator, Address, JobDriverAssignment, DeviceToken, Invoice, InvoiceLine,
-    PayReport, PayReportLine, JOB_STATUS_CHOICES
+    PayReport, PayReportLine, JOB_STATUS_CHOICES, ClockEntry
 )
 from .serializers import (
     JobSerializer, CustomerSerializer, DriverSerializer, RoleSerializer,
@@ -265,6 +265,34 @@ class DriverViewSet(viewsets.ModelViewSet):
             'driver': DriverSerializer(driver).data,
             'upcoming_job_count': job_assignments.count(),
             'next_job': JobSerializer(job_assignments.first().job).data if job_assignments.exists() else None,
+        })
+
+    @extend_schema(summary="Clock in the authenticated driver")
+    @action(detail=False, methods=['post'], url_path='clock-in')
+    def clock_in(self, request):
+        driver = get_object_or_404(Driver, user=request.user)
+        entry = ClockEntry.objects.create(driver=driver)
+        return Response({
+            'id': entry.id,
+            'clocked_in_at': entry.clocked_in_at,
+            'clocked_out_at': entry.clocked_out_at,
+        }, status=201)
+
+    @extend_schema(summary="Clock out the authenticated driver")
+    @action(detail=False, methods=['post'], url_path='clock-out')
+    def clock_out(self, request):
+        driver = get_object_or_404(Driver, user=request.user)
+        entry = ClockEntry.objects.filter(
+            driver=driver, clocked_out_at__isnull=True
+        ).order_by('-clocked_in_at').first()
+        if not entry:
+            return Response({'error': 'No active clock-in found.'}, status=400)
+        entry.clocked_out_at = timezone.now()
+        entry.save()
+        return Response({
+            'id': entry.id,
+            'clocked_in_at': entry.clocked_in_at,
+            'clocked_out_at': entry.clocked_out_at,
         })
 
 class TruckViewSet(viewsets.ModelViewSet):

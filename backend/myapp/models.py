@@ -430,3 +430,14 @@ class PasswordOTP(models.Model):
         self.save(update_fields=["attempts", "used"])
         return ok
 
+class ClockEntry(models.Model):
+    driver = models.ForeignKey(Driver, on_delete=models.CASCADE, related_name='clock_entries')
+    clocked_in_at = models.DateTimeField(default=timezone.now)
+    clocked_out_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ['-clocked_in_at']
+
+    def __str__(self):
+        return f"{self.driver.name} — {self.clocked_in_at}"
+

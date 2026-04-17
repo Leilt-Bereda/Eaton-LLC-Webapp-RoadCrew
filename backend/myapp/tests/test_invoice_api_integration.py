@@ -19,6 +19,10 @@ from rest_framework import status as http_status
 from myapp.models import Invoice, InvoiceLine, JobDriverAssignment
 
 
+def _results(data):
+    return data.get('results', data) if isinstance(data, dict) else data
+
+
 class TestInvoiceWorkflow:
     """Test complete invoice workflows."""
     
@@ -192,6 +196,7 @@ class TestInvoiceWorkflow:
         
         url = reverse('invoice-list')
         response = authenticated_api_client.get(url, {'date': date.today().isoformat()})
+        results = _results(response.data)
         
         assert response.status_code == http_status.HTTP_200_OK
         assert len(response.data) == 1

@@ -20,14 +20,15 @@ from django.contrib.auth import get_user_model
 from .models import (
     Job, Customer, Driver, Role, UserRole, Comment, Truck, DriverTruckAssignment,
     Operator, Address, JobDriverAssignment, DeviceToken, Invoice, InvoiceLine,
-    PayReport, PayReportLine, JOB_STATUS_CHOICES, ClockEntry
+    PayReport, PayReportLine, JOB_STATUS_CHOICES, ClockEntry, Ticket, TicketPhoto
 )
 from .serializers import (
     JobSerializer, CustomerSerializer, DriverSerializer, RoleSerializer,
     UserSerializer, UserRoleSerializer, CommentSerializer, TruckSerializer,
     DriverTruckAssignmentSerializer, OperatorSerializer, AddressSerializer,
     JobDriverAssignmentSerializer, DeviceTokenSerializer, InvoiceSerializer,
-    InvoiceLineSerializer, PayReportSerializer, PayReportLineSerializer
+    InvoiceLineSerializer, PayReportSerializer, PayReportLineSerializer,
+    TicketSerializer, TicketPhotoSerializer
 )
 from .permissions import IsDriver, IsManager, IsManagerOrDriver
 import requests
@@ -685,6 +686,32 @@ class PayReportLineViewSet(viewsets.ModelViewSet):
     def perform_update(self, serializer):
         line = serializer.save()  # model.save() recomputes totals
         line.report.recalc_from_lines()
+
+class TicketViewSet(viewsets.ViewSet):
+    permission_classes = [permissions.IsAuthenticated]
+
+    @extend_schema(summary="Submit a ticket with photos for the authenticated driver")
+    def create(self, request):
+        driver = get_object_or_404(Driver, user=request.user)
+        date = request.data.get('date')
+        if not date:
+            return Response({'error': 'date is required.'}, status=400)
+        ticket = Ticket.objects.create(driver=driver, date=date)
+        photos = request.FILES.getlist('photos')
+        for photo in photos:
+            TicketPhoto.objects.create(ticket=ticket, photo=photo)
+        serializer = TicketSerializer(ticket, context={'request': request})
+        return Response(serializer.data, status=201)
+
+    @extend_schema(summary="Get tickets for the authenticated driver filtered by date")
+    def list(self, request):
+        driver = get_object_or_404(Driver, user=request.user)
+        date = request.query_params.get('date')
+        tickets = Ticket.objects.filter(driver=driver)
+        if date:
+            tickets = tickets.filter(date=date)
+        serializer = TicketSerializer(tickets, many=True, context={'request': request})
+        return Response(serializer.data)
 
 def _recent_otp_count(user, minutes=15):
     since = timezone.now() - timedelta(minutes=minutes)

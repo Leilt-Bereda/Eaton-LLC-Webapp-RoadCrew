@@ -18,7 +18,9 @@ from .models import (
     Invoice,
     InvoiceLine,
     PayReport,
-    PayReportLine
+    PayReportLine,
+    Ticket,
+    TicketPhoto,
 )
 
 User = get_user_model()
@@ -426,6 +428,27 @@ class PayReportSerializer(serializers.ModelSerializer):
             if ws and we and we < ws:
                 raise serializers.ValidationError({"week_end": "must be on/after week_start"})
             return attrs
+
+class TicketPhotoSerializer(serializers.ModelSerializer):
+    photo = serializers.SerializerMethodField()
+
+    class Meta:
+        model = TicketPhoto
+        fields = ['id', 'photo']
+
+    def get_photo(self, obj):
+        request = self.context.get('request')
+        if request:
+            return request.build_absolute_uri(obj.photo.url)
+        return obj.photo.url
+
+class TicketSerializer(serializers.ModelSerializer):
+    photos = TicketPhotoSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = Ticket
+        fields = ['id', 'date', 'submitted_at', 'photos']
+        read_only_fields = ['id', 'submitted_at']
 
 class RequestOTPSerializer(serializers.Serializer):
     email = serializers.EmailField()

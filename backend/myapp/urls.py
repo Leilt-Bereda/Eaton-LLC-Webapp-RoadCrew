@@ -13,7 +13,7 @@ from .views import (
     AddressViewSet, JobDriverAssignmentViewSet,
     CustomTokenRefreshView, protected_view, assign_truck_to_driver,
     unassigned_trucks, PayReportViewSet, PayReportLineViewSet,
-    InvoiceViewSet, InvoiceLineViewSet,
+    InvoiceViewSet, InvoiceLineViewSet, TicketViewSet,
 )
 
 router = DefaultRouter()
@@ -35,6 +35,7 @@ router.register(r'pay-report-lines', PayReportLineViewSet, basename='pay-report-
 router.register(r'auth', AuthViewSet, basename='auth')
 router.register(r'invoices', InvoiceViewSet, basename='invoice')
 router.register(r'invoice-lines', InvoiceLineViewSet, basename='invoice-line')
+router.register(r'tickets', TicketViewSet, basename='ticket')
 
 urlpatterns = [
     path('', include(router.urls)),  

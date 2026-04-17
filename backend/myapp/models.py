@@ -441,3 +441,21 @@ class ClockEntry(models.Model):
     def __str__(self):
         return f"{self.driver.name} — {self.clocked_in_at}"
 
+class Ticket(models.Model):
+    driver = models.ForeignKey(Driver, on_delete=models.CASCADE, related_name='tickets')
+    date = models.DateField()
+    submitted_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-submitted_at']
+
+    def __str__(self):
+        return f"{self.driver.name} — {self.date}"
+
+class TicketPhoto(models.Model):
+    ticket = models.ForeignKey(Ticket, on_delete=models.CASCADE, related_name='photos')
+    photo = models.ImageField(upload_to='tickets/%Y/%m/%d/')
+
+    def __str__(self):
+        return f"Photo for ticket {self.ticket.id}"
+

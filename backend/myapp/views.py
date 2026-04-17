@@ -267,10 +267,27 @@ class DriverViewSet(viewsets.ModelViewSet):
             'next_job': JobSerializer(job_assignments.first().job).data if job_assignments.exists() else None,
         })
 
+    @extend_schema(summary="Get current clock status of the authenticated driver")
+    @action(detail=False, methods=['get'], url_path='clock-status')
+    def clock_status(self, request):
+        driver = get_object_or_404(Driver, user=request.user)
+        entry = ClockEntry.objects.filter(
+            driver=driver, clocked_out_at__isnull=True
+        ).order_by('-clocked_in_at').first()
+        return Response({
+            'is_clocked_in': entry is not None,
+            'clocked_in_at': entry.clocked_in_at if entry else None,
+        })
+
     @extend_schema(summary="Clock in the authenticated driver")
     @action(detail=False, methods=['post'], url_path='clock-in')
     def clock_in(self, request):
         driver = get_object_or_404(Driver, user=request.user)
+        existing = ClockEntry.objects.filter(
+            driver=driver, clocked_out_at__isnull=True
+        ).first()
+        if existing:
+            return Response({'error': 'You are already clocked in.'}, status=400)
         entry = ClockEntry.objects.create(driver=driver)
         return Response({
             'id': entry.id,

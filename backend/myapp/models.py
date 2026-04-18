@@ -168,6 +168,10 @@ class JobDriverAssignment(models.Model):
     started_at = models.DateTimeField(null=True, blank=True)
     on_site_at = models.DateTimeField(null=True, blank=True)
     completed_at = models.DateTimeField(null=True, blank=True)
+    backhaul_status = models.CharField(max_length=20, choices=JOB_STATUS_CHOICES, null=True, blank=True)
+    backhaul_started_at = models.DateTimeField(null=True, blank=True)
+    backhaul_on_site_at = models.DateTimeField(null=True, blank=True)
+    backhaul_completed_at = models.DateTimeField(null=True, blank=True)
 
 
     class Meta:

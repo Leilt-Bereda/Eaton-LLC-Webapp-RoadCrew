@@ -139,6 +139,27 @@ class JobDriverAssignmentViewSet(viewsets.ModelViewSet):
         assignment.save()
         return Response({'status': assignment.status})
 
+    @extend_schema(summary="Update the backhaul status of a job assignment")
+    @action(detail=True, methods=['patch'], url_path='backhaul-status')
+    def update_backhaul_status(self, request, pk=None):
+        assignment = self.get_object()
+        if assignment.driver_truck.driver.user != request.user:
+            return Response({'error': 'Forbidden'}, status=403)
+        if not assignment.job.is_backhaul_enabled:
+            return Response({'error': 'This job does not have a backhaul trip.'}, status=400)
+        new_status = request.data.get('status')
+        if new_status not in dict(JOB_STATUS_CHOICES):
+            return Response({'error': 'Invalid status'}, status=400)
+        if new_status == 'en_route':
+            assignment.backhaul_started_at = timezone.now()
+        if new_status == 'on_site':
+            assignment.backhaul_on_site_at = timezone.now()
+        if new_status == 'completed':
+            assignment.backhaul_completed_at = timezone.now()
+        assignment.backhaul_status = new_status
+        assignment.save()
+        return Response({'backhaul_status': assignment.backhaul_status})
+
     def perform_create(self, serializer):
         assignment = serializer.save()
 

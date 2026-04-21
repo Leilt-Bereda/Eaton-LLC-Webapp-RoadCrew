@@ -79,6 +79,9 @@ class Driver(models.Model):
     contact_info = models.TextField()
     address = models.TextField()
     truck_count = models.IntegerField(default=1)
+    is_clocked_in = models.BooleanField(default=False)
+    last_clocked_in_at = models.DateTimeField(null=True, blank=True)
+    last_clocked_out_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):

@@ -245,6 +245,82 @@ class DriverViewSet(viewsets.ModelViewSet):
         serializer = JobSerializer(jobs, many=True)
         return Response(serializer.data)
 
+    def _get_authenticated_driver(self, request):
+        return Driver.objects.filter(user=request.user).first()
+
+    def _clock_status_payload(self, driver):
+        return {
+            'is_clocked_in': driver.is_clocked_in,
+            'clocked_in': driver.is_clocked_in,
+            'last_clocked_in_at': driver.last_clocked_in_at,
+            'last_clocked_out_at': driver.last_clocked_out_at,
+        }
+
+    @extend_schema(summary="Get authenticated driver's clock status")
+    @action(detail=False, methods=['get'], url_path='clock-status')
+    def clock_status(self, request):
+        driver = self._get_authenticated_driver(request)
+        if not driver:
+            return Response({'error': 'No driver profile found for this user.'}, status=404)
+        return Response(self._clock_status_payload(driver), status=200)
+
+    @extend_schema(summary="Set authenticated driver's clock status")
+    @clock_status.mapping.patch
+    @clock_status.mapping.put
+    @clock_status.mapping.post
+    def set_clock_status(self, request):
+        driver = self._get_authenticated_driver(request)
+        if not driver:
+            return Response({'error': 'No driver profile found for this user.'}, status=404)
+
+        requested_state = request.data.get('is_clocked_in', request.data.get('clocked_in'))
+        if requested_state is None:
+            return Response({'error': 'is_clocked_in (or clocked_in) is required.'}, status=400)
+
+        if isinstance(requested_state, str):
+            normalized = requested_state.strip().lower()
+            if normalized in ['true', '1', 'yes', 'y', 'on']:
+                requested_state = True
+            elif normalized in ['false', '0', 'no', 'n', 'off']:
+                requested_state = False
+            else:
+                return Response({'error': 'is_clocked_in must be a boolean value.'}, status=400)
+        elif not isinstance(requested_state, bool):
+            return Response({'error': 'is_clocked_in must be a boolean value.'}, status=400)
+
+        driver.is_clocked_in = requested_state
+        if requested_state:
+            driver.last_clocked_in_at = timezone.now()
+        else:
+            driver.last_clocked_out_at = timezone.now()
+        driver.save(update_fields=['is_clocked_in', 'last_clocked_in_at', 'last_clocked_out_at'])
+
+        return Response(self._clock_status_payload(driver), status=200)
+
+    @extend_schema(summary="Clock in authenticated driver")
+    @action(detail=False, methods=['post'], url_path='clock-in')
+    def clock_in(self, request):
+        driver = self._get_authenticated_driver(request)
+        if not driver:
+            return Response({'error': 'No driver profile found for this user.'}, status=404)
+
+        driver.is_clocked_in = True
+        driver.last_clocked_in_at = timezone.now()
+        driver.save(update_fields=['is_clocked_in', 'last_clocked_in_at'])
+        return Response(self._clock_status_payload(driver), status=200)
+
+    @extend_schema(summary="Clock out authenticated driver")
+    @action(detail=False, methods=['post'], url_path='clock-out')
+    def clock_out(self, request):
+        driver = self._get_authenticated_driver(request)
+        if not driver:
+            return Response({'error': 'No driver profile found for this user.'}, status=404)
+
+        driver.is_clocked_in = False
+        driver.last_clocked_out_at = timezone.now()
+        driver.save(update_fields=['is_clocked_in', 'last_clocked_out_at'])
+        return Response(self._clock_status_payload(driver), status=200)
+
     @extend_schema(summary="Get dashboard summary for the authenticated driver")
     @action(detail=False, methods=['get'], url_path='me/summary')
     def summary(self, request):

@@ -1,9 +1,9 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from rest_framework_simplejwt.views import TokenVerifyView
+from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView, SpectacularRedocView
+
 from .views import AuthViewSet
-
-
 from . import views
 from .views import (
     JobViewSet, CustomerViewSet, DriverViewSet, RoleViewSet,
@@ -37,7 +37,13 @@ router.register(r'invoices', InvoiceViewSet, basename='invoice')
 router.register(r'invoice-lines', InvoiceLineViewSet, basename='invoice-line')
 
 urlpatterns = [
-    path('', include(router.urls)),  
+    # Swagger / OpenAPI docs
+    path('schema/', SpectacularAPIView.as_view(), name='schema'),
+    path('docs/', SpectacularSwaggerView.as_view(url_name='schema'), name='swagger-ui'),
+    path('redoc/', SpectacularRedocView.as_view(url_name='schema'), name='redoc'),
+
+    # API routes
+    path('', include(router.urls)),
     path('register/', RegisterView.as_view(), name='register'),
     path('login/', CustomTokenObtainPairView.as_view(), name='login'),
     path('token/refresh/', CustomTokenRefreshView.as_view(), name='token_refresh'),
@@ -45,5 +51,4 @@ urlpatterns = [
     path('protected/', protected_view, name='protected'),
     path('assign-truck/', assign_truck_to_driver, name='assign_truck'),
     path('unassigned-trucks/', unassigned_trucks, name='unassigned_trucks'),
-    
 ]

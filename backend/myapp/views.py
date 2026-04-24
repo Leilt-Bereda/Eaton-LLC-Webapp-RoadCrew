@@ -20,7 +20,8 @@ from django.contrib.auth import get_user_model
 from .models import (
     Job, Customer, Driver, Role, UserRole, Comment, Truck, DriverTruckAssignment,
     Operator, Address, JobDriverAssignment, DeviceToken, Invoice, InvoiceLine,
-    PayReport, PayReportLine, JOB_STATUS_CHOICES, ClockEntry, Ticket, TicketPhoto
+    PayReport, PayReportLine, JOB_STATUS_CHOICES, ClockEntry, Ticket, TicketPhoto,
+    DriverLocation
 )
 from .serializers import (
     JobSerializer, CustomerSerializer, DriverSerializer, RoleSerializer,
@@ -28,7 +29,7 @@ from .serializers import (
     DriverTruckAssignmentSerializer, OperatorSerializer, AddressSerializer,
     JobDriverAssignmentSerializer, DeviceTokenSerializer, InvoiceSerializer,
     InvoiceLineSerializer, PayReportSerializer, PayReportLineSerializer,
-    TicketSerializer, TicketPhotoSerializer
+    TicketSerializer, TicketPhotoSerializer, DriverLocationSerializer
 )
 from .permissions import IsDriver, IsManager, IsManagerOrDriver
 import requests
@@ -316,6 +317,20 @@ class DriverViewSet(viewsets.ModelViewSet):
             'clocked_in_at': entry.clocked_in_at,
             'clocked_out_at': entry.clocked_out_at,
         }, status=201)
+
+    @extend_schema(summary="Update the authenticated driver's current location")
+    @action(detail=False, methods=['patch'], url_path='location')
+    def update_location(self, request):
+        driver = get_object_or_404(Driver, user=request.user)
+        latitude = request.data.get('latitude')
+        longitude = request.data.get('longitude')
+        if latitude is None or longitude is None:
+            return Response({'error': 'latitude and longitude are required.'}, status=400)
+        DriverLocation.objects.update_or_create(
+            driver=driver,
+            defaults={'latitude': latitude, 'longitude': longitude}
+        )
+        return Response({'ok': True})
 
     @extend_schema(summary="Clock out the authenticated driver")
     @action(detail=False, methods=['post'], url_path='clock-out')

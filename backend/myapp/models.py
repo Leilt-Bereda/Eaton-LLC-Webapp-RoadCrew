@@ -463,3 +463,12 @@ class TicketPhoto(models.Model):
     def __str__(self):
         return f"Photo for ticket {self.ticket.id}"
 
+class DriverLocation(models.Model):
+    driver = models.OneToOneField(Driver, on_delete=models.CASCADE, related_name='location')
+    latitude = models.DecimalField(max_digits=9, decimal_places=6)
+    longitude = models.DecimalField(max_digits=9, decimal_places=6)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"{self.driver.name} — {self.latitude}, {self.longitude}"
+

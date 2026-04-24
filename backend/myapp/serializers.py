@@ -21,6 +21,7 @@ from .models import (
     PayReportLine,
     Ticket,
     TicketPhoto,
+    DriverLocation,
 )
 
 User = get_user_model()
@@ -451,6 +452,12 @@ class TicketSerializer(serializers.ModelSerializer):
         model = Ticket
         fields = ['id', 'date', 'submitted_at', 'photos']
         read_only_fields = ['id', 'submitted_at']
+
+class DriverLocationSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = DriverLocation
+        fields = ['latitude', 'longitude', 'updated_at']
+        read_only_fields = ['updated_at']
 
 class RequestOTPSerializer(serializers.Serializer):
     email = serializers.EmailField()

@@ -53,15 +53,16 @@ class JobDriverAssignmentSerializer(serializers.ModelSerializer):
         source='driver_truck',
         read_only=True
     )
+    en_route_at = serializers.DateTimeField(source='started_at', read_only=True)
 
     class Meta:
         model  = JobDriverAssignment
         fields = [
         'id', 'job', 'driver_truck', 'driver_truck_info',
         'assigned_at', 'unassigned_at',
-        'status', 'started_at', 'on_site_at', 'completed_at',
+        'status', 'started_at', 'en_route_at', 'on_site_at', 'completed_at',
         ]
-        read_only_fields = ['assigned_at', 'unassigned_at', 'started_at', 'on_site_at', 'completed_at']
+        read_only_fields = ['assigned_at', 'unassigned_at', 'started_at', 'en_route_at', 'on_site_at', 'completed_at']
 
         
 class JobSerializer(serializers.ModelSerializer):

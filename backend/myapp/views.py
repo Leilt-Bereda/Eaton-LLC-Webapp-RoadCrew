@@ -1,4 +1,5 @@
 from django.http import HttpResponse
+from drf_spectacular.utils import extend_schema, OpenApiParameter, inline_serializer
 from django.shortcuts import get_object_or_404
 from rest_framework import viewsets, generics, permissions, status, serializers
 from rest_framework.decorators import api_view, action, permission_classes
@@ -128,12 +129,10 @@ class JobDriverAssignmentViewSet(viewsets.ModelViewSet):
             fields={
                 'status': serializers.CharField(),
                 'expected_status': serializers.CharField(required=False),
+                'occurred_at': serializers.DateTimeField(required=False),
             },
         ),
-        responses=inline_serializer(
-            name='JobDriverAssignmentStatusUpdateResponse',
-            fields={'status': serializers.CharField()},
-        ),
+        responses=JobDriverAssignmentSerializer,
     )
     @action(detail=True, methods=['patch'], url_path='status')
     def update_status(self, request, pk=None):
@@ -171,17 +170,31 @@ class JobDriverAssignmentViewSet(viewsets.ModelViewSet):
                 status=409
             )
 
-        if new_status == 'en_route' and not assignment.started_at:
-            assignment.started_at = timezone.now()
-        if new_status == 'on_site' and not assignment.on_site_at:
-            assignment.on_site_at = timezone.now()
-        if new_status == 'completed' and not assignment.completed_at:
-            assignment.completed_at = timezone.now()
+        occurred_at_raw = request.data.get('occurred_at')
+        if occurred_at_raw in (None, ''):
+            action_time = timezone.now()
+        else:
+            datetime_field = serializers.DateTimeField()
+            try:
+                action_time = datetime_field.to_internal_value(occurred_at_raw)
+            except serializers.ValidationError:
+                return Response(
+                    {'error': 'Invalid occurred_at. Use an ISO 8601 datetime.'},
+                    status=400,
+                )
+
+        if new_status == 'en_route':
+            assignment.started_at = action_time
+        if new_status == 'on_site':
+            assignment.on_site_at = action_time
+        if new_status == 'completed':
+            assignment.completed_at = action_time
 
         assignment.status = new_status
         assignment.save()
 
-        return Response({'status': assignment.status})
+        serializer = self.get_serializer(assignment)
+        return Response(serializer.data)
 
     def perform_create(self, serializer):
         assignment = serializer.save()

@@ -56,16 +56,17 @@ class JobDriverAssignmentSerializer(serializers.ModelSerializer):
         source='driver_truck',
         read_only=True
     )
+    en_route_at = serializers.DateTimeField(source='started_at', read_only=True)
 
     class Meta:
         model  = JobDriverAssignment
         fields = [
         'id', 'job', 'driver_truck', 'driver_truck_info',
         'assigned_at', 'unassigned_at',
-        'status', 'started_at', 'on_site_at', 'completed_at',
+        'status', 'started_at', 'en_route_at', 'on_site_at', 'completed_at',
         'backhaul_status', 'backhaul_started_at', 'backhaul_on_site_at', 'backhaul_completed_at',
         ]
-        read_only_fields = ['assigned_at', 'unassigned_at', 'started_at', 'on_site_at', 'completed_at',
+        read_only_fields = ['assigned_at', 'unassigned_at', 'started_at', 'en_route_at', 'on_site_at', 'completed_at',
                             'backhaul_started_at', 'backhaul_on_site_at', 'backhaul_completed_at']
 
         
@@ -206,14 +207,15 @@ class OperatorSerializer(serializers.ModelSerializer):
 
 
 class InvoiceLineSerializer(serializers.ModelSerializer):
+    id = serializers.IntegerField(required=False)
     amount = serializers.SerializerMethodField(read_only=True)
+    invoice = serializers.PrimaryKeyRelatedField(read_only=True)
 
     class Meta:
         model = InvoiceLine
         fields = ["id", "invoice", "description", "service_date", "quantity", "unit_price", "amount"]
-        read_only_fields = ["id"]
 
-    def get_amount(self, obj):
+    def get_amount(self, obj) -> float:
         qty = obj.quantity or 0
         price = obj.unit_price or 0
         return float(qty) * float(price)
@@ -322,17 +324,7 @@ class InvoiceSerializer(serializers.ModelSerializer):
         for line in lines_data:
             InvoiceLine.objects.create(invoice=invoice, **line)
 
-        # Optional: compute total here if not handled by model .save()
-        try:
-            total = 0
-            for l in invoice.lines.all():
-                qty = l.quantity or 0
-                price = l.unit_price or 0
-                total += float(qty) * float(price)
-            invoice.total_amount = total
-            invoice.save(update_fields=["total_amount"])
-        except Exception:
-            pass
+        invoice.recalc_totals()
 
         # Return the serialized invoice instance so nested customer and job data are included
         # DRF will automatically serialize this using the InvoiceSerializer
@@ -378,17 +370,7 @@ class InvoiceSerializer(serializers.ModelSerializer):
                     # Create new line (no ID or invalid ID)
                     InvoiceLine.objects.create(invoice=instance, **line_data)
             
-            # Recalculate totals
-            try:
-                total = 0
-                for l in instance.lines.all():
-                    qty = l.quantity or 0
-                    price = l.unit_price or 0
-                    total += float(qty) * float(price)
-                instance.total_amount = total
-                instance.save(update_fields=["total_amount"])
-            except Exception:
-                pass
+            instance.recalc_totals()
         
         return instance
 

@@ -1,7 +1,7 @@
 from django.http import HttpResponse
-from drf_spectacular.utils import extend_schema, OpenApiParameter
+from drf_spectacular.utils import extend_schema, OpenApiParameter, inline_serializer
 from django.shortcuts import get_object_or_404
-from rest_framework import viewsets, generics, permissions, status
+from rest_framework import viewsets, generics, permissions, status, serializers
 from rest_framework.decorators import api_view, action, permission_classes
 from rest_framework.response import Response
 from rest_framework.permissions import AllowAny
@@ -32,6 +32,7 @@ from .serializers import (
     TicketSerializer, TicketPhotoSerializer, DriverLocationSerializer
 )
 from .permissions import IsDriver, IsManager, IsManagerOrDriver
+from drf_spectacular.utils import extend_schema, OpenApiParameter, inline_serializer
 import requests
 
 # For user model
@@ -102,6 +103,8 @@ class JobDriverAssignmentViewSet(viewsets.ModelViewSet):
                        )
     serializer_class = JobDriverAssignmentSerializer
     permission_classes = [IsManagerOrDriver]
+
+    @extend_schema(responses=JobDriverAssignmentSerializer(many=True))
     @action(detail=False, methods=['get'], url_path='my-jobs')
     def my_jobs(self, request):
         """
@@ -121,24 +124,79 @@ class JobDriverAssignmentViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(assignments, many=True)
         return Response(serializer.data)
 
-    @extend_schema(summary="Update the status of a job assignment (en_route, on_site, completed)")
+    @extend_schema(
+        summary="Update the status of a job assignment (en_route, on_site, completed)",
+        request=inline_serializer(
+            name='JobDriverAssignmentStatusUpdateRequest',
+            fields={
+                'status': serializers.CharField(),
+                'expected_status': serializers.CharField(required=False),
+                'occurred_at': serializers.DateTimeField(required=False),
+            },
+        ),
+        responses=JobDriverAssignmentSerializer,
+    )
     @action(detail=True, methods=['patch'], url_path='status')
     def update_status(self, request, pk=None):
         assignment = self.get_object()
+
         if assignment.driver_truck.driver.user != request.user:
             return Response({'error': 'Forbidden'}, status=403)
+
         new_status = request.data.get('status')
         if new_status not in dict(JOB_STATUS_CHOICES):
             return Response({'error': 'Invalid status'}, status=400)
+
+        current_status = assignment.status
+        expected_status = request.data.get('expected_status')
+
+        if expected_status is not None and expected_status not in dict(JOB_STATUS_CHOICES):
+            return Response(
+                {
+                    'error': 'Invalid expected_status',
+                    'allowed_statuses': list(dict(JOB_STATUS_CHOICES).keys()),
+                },
+                status=400
+            )
+
+        # If client provides the status it last saw, reject stale writes.
+        if expected_status is not None and expected_status != current_status:
+            return Response(
+                {
+                    'code': 'SYNC_CONFLICT',
+                    'error': 'Conflict: assignment status changed on the server.',
+                    'current_status': current_status,
+                    'expected_status': expected_status,
+                    'requested_status': new_status,
+                },
+                status=409
+            )
+
+        occurred_at_raw = request.data.get('occurred_at')
+        if occurred_at_raw in (None, ''):
+            action_time = timezone.now()
+        else:
+            datetime_field = serializers.DateTimeField()
+            try:
+                action_time = datetime_field.to_internal_value(occurred_at_raw)
+            except serializers.ValidationError:
+                return Response(
+                    {'error': 'Invalid occurred_at. Use an ISO 8601 datetime.'},
+                    status=400,
+                )
+
         if new_status == 'en_route':
-            assignment.started_at = timezone.now()
+            assignment.started_at = action_time
         if new_status == 'on_site':
-            assignment.on_site_at = timezone.now()
+            assignment.on_site_at = action_time
         if new_status == 'completed':
-            assignment.completed_at = timezone.now()
+            assignment.completed_at = action_time
+
         assignment.status = new_status
         assignment.save()
-        return Response({'status': assignment.status})
+
+        serializer = self.get_serializer(assignment)
+        return Response(serializer.data)
 
     @extend_schema(summary="Update the backhaul status of a job assignment")
     @action(detail=True, methods=['patch'], url_path='backhaul-status')
@@ -267,6 +325,82 @@ class DriverViewSet(viewsets.ModelViewSet):
 
         serializer = JobSerializer(jobs, many=True)
         return Response(serializer.data)
+
+    def _get_authenticated_driver(self, request):
+        return Driver.objects.filter(user=request.user).first()
+
+    def _clock_status_payload(self, driver):
+        return {
+            'is_clocked_in': driver.is_clocked_in,
+            'clocked_in': driver.is_clocked_in,
+            'last_clocked_in_at': driver.last_clocked_in_at,
+            'last_clocked_out_at': driver.last_clocked_out_at,
+        }
+
+    @extend_schema(summary="Get authenticated driver's clock status")
+    @action(detail=False, methods=['get'], url_path='clock-status')
+    def clock_status(self, request):
+        driver = self._get_authenticated_driver(request)
+        if not driver:
+            return Response({'error': 'No driver profile found for this user.'}, status=404)
+        return Response(self._clock_status_payload(driver), status=200)
+
+    @extend_schema(summary="Set authenticated driver's clock status")
+    @clock_status.mapping.patch
+    @clock_status.mapping.put
+    @clock_status.mapping.post
+    def set_clock_status(self, request):
+        driver = self._get_authenticated_driver(request)
+        if not driver:
+            return Response({'error': 'No driver profile found for this user.'}, status=404)
+
+        requested_state = request.data.get('is_clocked_in', request.data.get('clocked_in'))
+        if requested_state is None:
+            return Response({'error': 'is_clocked_in (or clocked_in) is required.'}, status=400)
+
+        if isinstance(requested_state, str):
+            normalized = requested_state.strip().lower()
+            if normalized in ['true', '1', 'yes', 'y', 'on']:
+                requested_state = True
+            elif normalized in ['false', '0', 'no', 'n', 'off']:
+                requested_state = False
+            else:
+                return Response({'error': 'is_clocked_in must be a boolean value.'}, status=400)
+        elif not isinstance(requested_state, bool):
+            return Response({'error': 'is_clocked_in must be a boolean value.'}, status=400)
+
+        driver.is_clocked_in = requested_state
+        if requested_state:
+            driver.last_clocked_in_at = timezone.now()
+        else:
+            driver.last_clocked_out_at = timezone.now()
+        driver.save(update_fields=['is_clocked_in', 'last_clocked_in_at', 'last_clocked_out_at'])
+
+        return Response(self._clock_status_payload(driver), status=200)
+
+    @extend_schema(summary="Clock in authenticated driver")
+    @action(detail=False, methods=['post'], url_path='clock-in')
+    def clock_in(self, request):
+        driver = self._get_authenticated_driver(request)
+        if not driver:
+            return Response({'error': 'No driver profile found for this user.'}, status=404)
+
+        driver.is_clocked_in = True
+        driver.last_clocked_in_at = timezone.now()
+        driver.save(update_fields=['is_clocked_in', 'last_clocked_in_at'])
+        return Response(self._clock_status_payload(driver), status=200)
+
+    @extend_schema(summary="Clock out authenticated driver")
+    @action(detail=False, methods=['post'], url_path='clock-out')
+    def clock_out(self, request):
+        driver = self._get_authenticated_driver(request)
+        if not driver:
+            return Response({'error': 'No driver profile found for this user.'}, status=404)
+
+        driver.is_clocked_in = False
+        driver.last_clocked_out_at = timezone.now()
+        driver.save(update_fields=['is_clocked_in', 'last_clocked_out_at'])
+        return Response(self._clock_status_payload(driver), status=200)
 
     @extend_schema(summary="Get dashboard summary for the authenticated driver")
     @action(detail=False, methods=['get'], url_path='me/summary')
@@ -442,12 +576,31 @@ class CustomTokenRefreshView(TokenRefreshView):
     pass
 
 # Protected test endpoint
+@extend_schema(
+    responses=inline_serializer(
+        name='ProtectedViewResponse',
+        fields={'message': serializers.CharField()},
+    )
+)
 @api_view(["GET"])
 @permission_classes([IsManagerOrDriver])
 def protected_view(request):
     return Response({"message": "This is a protected view!"}, status=status.HTTP_200_OK)
 
 # API: Assign a truck to a driver
+@extend_schema(
+    request=inline_serializer(
+        name='AssignTruckRequest',
+        fields={
+            'driver_id': serializers.IntegerField(),
+            'truck_id': serializers.IntegerField(),
+        },
+    ),
+    responses=inline_serializer(
+        name='AssignTruckResponse',
+        fields={'message': serializers.CharField()},
+    ),
+)
 @api_view(["POST"])
 @permission_classes([IsManager])
 def assign_truck_to_driver(request):
@@ -480,6 +633,7 @@ def drivers_and_trucks(request):
         "trucks": truck_data
     })
 
+@extend_schema(responses=TruckSerializer(many=True))
 @api_view(['GET'])
 @permission_classes([IsManager])
 def unassigned_trucks(request):
@@ -591,6 +745,17 @@ class PayReportViewSet(viewsets.ModelViewSet):
         pr = serializer.save(updated_at=timezone.now())
         pr.recalc_from_lines()
 
+    @extend_schema(
+        request=inline_serializer(
+            name='PayReportGenerateRequest',
+            fields={
+                'driver_id': serializers.IntegerField(),
+                'week_start': serializers.DateField(),
+                'week_end': serializers.DateField(),
+            },
+        ),
+        responses=PayReportSerializer,
+    )
     @action(detail=False, methods=['post'], url_path='generate')
     def generate(self, request):
         """
@@ -755,7 +920,25 @@ def _recent_otp_count(user, minutes=15):
 
 class AuthViewSet(viewsets.ViewSet):
     permission_classes = [permissions.AllowAny]
+    serializer_class = RequestOTPSerializer
 
+    def get_serializer_class(self):
+        if self.action == 'verify_password_otp':
+            return VerifyOTPSerializer
+        if self.action == 'reset_password_with_otp':
+            return ResetPasswordSerializer
+        return RequestOTPSerializer
+
+    @extend_schema(
+        request=RequestOTPSerializer,
+        responses=inline_serializer(
+            name='PasswordResetRequestResponse',
+            fields={
+                'ok': serializers.BooleanField(),
+                'message': serializers.CharField(),
+            },
+        ),
+    )
     @action(detail=False, methods=["post"], url_path="password-reset")
     def request_password_otp(self, request):
         s = RequestOTPSerializer(data=request.data); s.is_valid(raise_exception=True)
@@ -770,6 +953,13 @@ class AuthViewSet(viewsets.ViewSet):
         # Always return success to prevent email enumeration
         return Response({"ok": True, "message": "If an account exists with this email, a password reset code has been sent."})
 
+    @extend_schema(
+        request=VerifyOTPSerializer,
+        responses=inline_serializer(
+            name='PasswordResetVerifyResponse',
+            fields={'valid': serializers.BooleanField()},
+        ),
+    )
     @action(detail=False, methods=["post"], url_path="password-reset/verify")
     def verify_password_otp(self, request):
         s = VerifyOTPSerializer(data=request.data); s.is_valid(raise_exception=True)
@@ -782,6 +972,13 @@ class AuthViewSet(viewsets.ViewSet):
         if otp and otp.code_hash == otp._hash(code, otp.salt): return Response({"valid": True})
         return Response({"valid": False})
 
+    @extend_schema(
+        request=ResetPasswordSerializer,
+        responses=inline_serializer(
+            name='PasswordResetConfirmResponse',
+            fields={'ok': serializers.BooleanField()},
+        ),
+    )
     @action(detail=False, methods=["post"], url_path="password-reset/confirm")
     def reset_password_with_otp(self, request):
         s = ResetPasswordSerializer(data=request.data); s.is_valid(raise_exception=True)

@@ -79,6 +79,9 @@ class Driver(models.Model):
     contact_info = models.TextField()
     address = models.TextField()
     truck_count = models.IntegerField(default=1)
+    is_clocked_in = models.BooleanField(default=False)
+    last_clocked_in_at = models.DateTimeField(null=True, blank=True)
+    last_clocked_out_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
@@ -279,7 +282,9 @@ class InvoiceLine(models.Model):
         return f"{self.description} - {self.line_total}"
 
     def save(self, *args, **kwargs):
-        self.line_total = (self.quantity or 0) * (self.unit_price or 0)
+        quantity = self.quantity if self.quantity is not None else Decimal('0.00')
+        unit_price = self.unit_price if self.unit_price is not None else Decimal('0.00')
+        self.line_total = (quantity * unit_price).quantize(Decimal('0.01'))
         super().save(*args, **kwargs)
 
 

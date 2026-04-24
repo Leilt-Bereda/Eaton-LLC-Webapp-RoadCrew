@@ -1,7 +1,7 @@
 from django.http import HttpResponse
-from drf_spectacular.utils import extend_schema, OpenApiParameter
+from drf_spectacular.utils import extend_schema, OpenApiParameter, inline_serializer
 from django.shortcuts import get_object_or_404
-from rest_framework import viewsets, generics, permissions, status
+from rest_framework import viewsets, generics, permissions, status, serializers
 from rest_framework.decorators import api_view, action, permission_classes
 from rest_framework.response import Response
 from rest_framework.permissions import AllowAny
@@ -119,24 +119,79 @@ class JobDriverAssignmentViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(assignments, many=True)
         return Response(serializer.data)
 
-    @extend_schema(summary="Update the status of a job assignment (en_route, on_site, completed)")
+    @extend_schema(
+        summary="Update the status of a job assignment (en_route, on_site, completed)",
+        request=inline_serializer(
+            name='JobDriverAssignmentStatusUpdateRequest',
+            fields={
+                'status': serializers.CharField(),
+                'expected_status': serializers.CharField(required=False),
+                'occurred_at': serializers.DateTimeField(required=False),
+            },
+        ),
+        responses=JobDriverAssignmentSerializer,
+    )
     @action(detail=True, methods=['patch'], url_path='status')
     def update_status(self, request, pk=None):
         assignment = self.get_object()
+
         if assignment.driver_truck.driver.user != request.user:
             return Response({'error': 'Forbidden'}, status=403)
+
         new_status = request.data.get('status')
         if new_status not in dict(JOB_STATUS_CHOICES):
             return Response({'error': 'Invalid status'}, status=400)
+
+        current_status = assignment.status
+        expected_status = request.data.get('expected_status')
+
+        if expected_status is not None and expected_status not in dict(JOB_STATUS_CHOICES):
+            return Response(
+                {
+                    'error': 'Invalid expected_status',
+                    'allowed_statuses': list(dict(JOB_STATUS_CHOICES).keys()),
+                },
+                status=400
+            )
+
+        # If client provides the status it last saw, reject stale writes.
+        if expected_status is not None and expected_status != current_status:
+            return Response(
+                {
+                    'code': 'SYNC_CONFLICT',
+                    'error': 'Conflict: assignment status changed on the server.',
+                    'current_status': current_status,
+                    'expected_status': expected_status,
+                    'requested_status': new_status,
+                },
+                status=409
+            )
+
+        occurred_at_raw = request.data.get('occurred_at')
+        if occurred_at_raw in (None, ''):
+            action_time = timezone.now()
+        else:
+            datetime_field = serializers.DateTimeField()
+            try:
+                action_time = datetime_field.to_internal_value(occurred_at_raw)
+            except serializers.ValidationError:
+                return Response(
+                    {'error': 'Invalid occurred_at. Use an ISO 8601 datetime.'},
+                    status=400,
+                )
+
         if new_status == 'en_route':
-            assignment.started_at = timezone.now()
+            assignment.started_at = action_time
         if new_status == 'on_site':
-            assignment.on_site_at = timezone.now()
+            assignment.on_site_at = action_time
         if new_status == 'completed':
-            assignment.completed_at = timezone.now()
+            assignment.completed_at = action_time
+
         assignment.status = new_status
         assignment.save()
-        return Response({'status': assignment.status})
+
+        serializer = self.get_serializer(assignment)
+        return Response(serializer.data)
 
     def perform_create(self, serializer):
         assignment = serializer.save()

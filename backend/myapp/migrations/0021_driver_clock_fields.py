@@ -4,7 +4,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('myapp', '0016_jobdriverassignment_on_site_at'),
+        ('myapp', '0020_driverlocation'),
     ]
 
     operations = [

@@ -278,7 +278,9 @@ class InvoiceLine(models.Model):
         return f"{self.description} - {self.line_total}"
 
     def save(self, *args, **kwargs):
-        self.line_total = (self.quantity or 0) * (self.unit_price or 0)
+        quantity = self.quantity if self.quantity is not None else Decimal('0.00')
+        unit_price = self.unit_price if self.unit_price is not None else Decimal('0.00')
+        self.line_total = (quantity * unit_price).quantize(Decimal('0.01'))
         super().save(*args, **kwargs)
 
 

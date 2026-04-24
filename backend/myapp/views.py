@@ -30,6 +30,7 @@ from .serializers import (
     InvoiceLineSerializer, PayReportSerializer, PayReportLineSerializer
 )
 from .permissions import IsDriver, IsManager, IsManagerOrDriver
+from drf_spectacular.utils import extend_schema, OpenApiParameter, inline_serializer
 import requests
 
 # For user model
@@ -100,6 +101,8 @@ class JobDriverAssignmentViewSet(viewsets.ModelViewSet):
                        )
     serializer_class = JobDriverAssignmentSerializer
     permission_classes = [IsManagerOrDriver]
+
+    @extend_schema(responses=JobDriverAssignmentSerializer(many=True))
     @action(detail=False, methods=['get'], url_path='my-jobs')
     def my_jobs(self, request):
         """
@@ -491,12 +494,31 @@ class CustomTokenRefreshView(TokenRefreshView):
     pass
 
 # Protected test endpoint
+@extend_schema(
+    responses=inline_serializer(
+        name='ProtectedViewResponse',
+        fields={'message': serializers.CharField()},
+    )
+)
 @api_view(["GET"])
 @permission_classes([IsManagerOrDriver])
 def protected_view(request):
     return Response({"message": "This is a protected view!"}, status=status.HTTP_200_OK)
 
 # API: Assign a truck to a driver
+@extend_schema(
+    request=inline_serializer(
+        name='AssignTruckRequest',
+        fields={
+            'driver_id': serializers.IntegerField(),
+            'truck_id': serializers.IntegerField(),
+        },
+    ),
+    responses=inline_serializer(
+        name='AssignTruckResponse',
+        fields={'message': serializers.CharField()},
+    ),
+)
 @api_view(["POST"])
 @permission_classes([IsManager])
 def assign_truck_to_driver(request):
@@ -529,6 +551,7 @@ def drivers_and_trucks(request):
         "trucks": truck_data
     })
 
+@extend_schema(responses=TruckSerializer(many=True))
 @api_view(['GET'])
 @permission_classes([IsManager])
 def unassigned_trucks(request):
@@ -640,6 +663,17 @@ class PayReportViewSet(viewsets.ModelViewSet):
         pr = serializer.save(updated_at=timezone.now())
         pr.recalc_from_lines()
 
+    @extend_schema(
+        request=inline_serializer(
+            name='PayReportGenerateRequest',
+            fields={
+                'driver_id': serializers.IntegerField(),
+                'week_start': serializers.DateField(),
+                'week_end': serializers.DateField(),
+            },
+        ),
+        responses=PayReportSerializer,
+    )
     @action(detail=False, methods=['post'], url_path='generate')
     def generate(self, request):
         """
@@ -778,7 +812,25 @@ def _recent_otp_count(user, minutes=15):
 
 class AuthViewSet(viewsets.ViewSet):
     permission_classes = [permissions.AllowAny]
+    serializer_class = RequestOTPSerializer
 
+    def get_serializer_class(self):
+        if self.action == 'verify_password_otp':
+            return VerifyOTPSerializer
+        if self.action == 'reset_password_with_otp':
+            return ResetPasswordSerializer
+        return RequestOTPSerializer
+
+    @extend_schema(
+        request=RequestOTPSerializer,
+        responses=inline_serializer(
+            name='PasswordResetRequestResponse',
+            fields={
+                'ok': serializers.BooleanField(),
+                'message': serializers.CharField(),
+            },
+        ),
+    )
     @action(detail=False, methods=["post"], url_path="password-reset")
     def request_password_otp(self, request):
         s = RequestOTPSerializer(data=request.data); s.is_valid(raise_exception=True)
@@ -793,6 +845,13 @@ class AuthViewSet(viewsets.ViewSet):
         # Always return success to prevent email enumeration
         return Response({"ok": True, "message": "If an account exists with this email, a password reset code has been sent."})
 
+    @extend_schema(
+        request=VerifyOTPSerializer,
+        responses=inline_serializer(
+            name='PasswordResetVerifyResponse',
+            fields={'valid': serializers.BooleanField()},
+        ),
+    )
     @action(detail=False, methods=["post"], url_path="password-reset/verify")
     def verify_password_otp(self, request):
         s = VerifyOTPSerializer(data=request.data); s.is_valid(raise_exception=True)
@@ -805,6 +864,13 @@ class AuthViewSet(viewsets.ViewSet):
         if otp and otp.code_hash == otp._hash(code, otp.salt): return Response({"valid": True})
         return Response({"valid": False})
 
+    @extend_schema(
+        request=ResetPasswordSerializer,
+        responses=inline_serializer(
+            name='PasswordResetConfirmResponse',
+            fields={'ok': serializers.BooleanField()},
+        ),
+    )
     @action(detail=False, methods=["post"], url_path="password-reset/confirm")
     def reset_password_with_otp(self, request):
         s = ResetPasswordSerializer(data=request.data); s.is_valid(raise_exception=True)
